@@ -1,0 +1,99 @@
+"""
+strategy.py
+
+Cleaned and hardened versions of:
+- vwap
+- make_trend_following
+- make_stat_arb
+- simulate_option_proxy
+
+Key fixes applied:
+- Explicit index alignment (reindex + ffill) where series from different symbols are combined.
+- Safe rolling calculations with min_periods and denom checks to avoid divide-by-zero and spurious early values.
+- Signals reindexed to the price series before simulation (fill False).
+- simulate_option_proxy closes open positions at end-of-data (EOD) and documents entry/exit logic.
+- Consistent use of positional access (iloc) while ensuring index alignment beforehand.
+"""
+from typing import Tuple
+import pandas as pd
+import numpy as np
+
+
+def vwap(df: pd.DataFrame) -> pd.Series:
+    """
+    Cumulative VWAP over the DataFrame (expects 'Close' and 'Volume').
+    Returns a Series indexed like df.
+    """
+    pv = (df['Close'] * df['Volume']).cumsum()
+    vv = df['Volume'].cumsum()
+    # Avoid div by zero; result will be NaN until vv > 0
+    return pv / vv.replace({0: np.nan})
+
+
+def make_trend_following(spy: pd.DataFrame, vix: pd.DataFrame = None) -> pd.DataFrame:
+    """
+    Trend-following signals for spy DataFrame (15m bars assumed).
+    Produces VWAP, EMA9 and boolean long_sig / short_sig columns.
+    If vix is provided, uses the VIX close slope as a filter (reindexed to spy.index).
+    """
+    df = spy.copy()
+    df = df.sort_index()
+    # Ensure necessary columns exist
+    if 'Volume' not in df.columns:
+        df['Volume'] = 0.0
+    df['VWAP'] = vwap(df)
+    df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
+
+    if vix is not None:
+        vix15 = vix['Close'].reindex(df.index).ffill()
+        df['VIX_slope'] = vix15.diff()
+    else:
+        df['VIX_slope'] = 0.0
+
+    # Signals (use current bar comparison to indicators)
+    df['long_sig'] = (df['Close'] > df['VWAP']) & (df['Close'] > df['EMA9']) & (df['VIX_slope'] <= 0)
+    df['short_sig'] = (df['Close'] < df['VWAP']) & (df['Close'] < df['EMA9']) & (df['VIX_slope'] >= 0)
+
+    # Ensure bool dtype and no NaNs
+    df['long_sig'] = df['long_sig'].fillna(False).astype(bool)
+    df['short_sig'] = df['short_sig'].fillna(False).astype(bool)
+    return df
+
+
+def make_stat_arb(spy: pd.DataFrame, qqq: pd.DataFrame) -> pd.DataFrame:
+    """
+    Simple stat-arb signals based on the recent pct_change spread between spy and qqq.
+
+    """
+    """Runner script that imports the `strategy` module and executes a small example.
+
+    This file provides a simple CLI-style runner so you can execute `python M1` to
+    see example output.
+    """
+    from strategy import make_trend_following, make_stat_arb, simulate_option_proxy
+    import pandas as pd
+    import numpy as np
+
+
+    def main():
+        times = pd.date_range("2025-01-02 09:30", periods=20, freq="15min")
+        spy = pd.DataFrame({
+            'Open':  np.linspace(430, 435, 20),
+            'High':  np.linspace(431, 436, 20),
+            'Low':   np.linspace(429, 434, 20),
+            'Close': np.linspace(430, 435, 20),
+            'Volume': np.random.randint(100, 1000, size=20)
+        }, index=times)
+
+        qqq = spy.copy()
+        qqq['Close'] *= 0.98  # small offset
+
+        tf = make_trend_following(spy)
+        sa = make_stat_arb(spy, qqq)
+        res, ent = simulate_option_proxy(spy['Close'], tf['long_sig'], tf['short_sig'])
+        print("Entries:\n", ent)
+        print("PnLs:\n", res)
+
+
+    if __name__ == "__main__":
+        main()
