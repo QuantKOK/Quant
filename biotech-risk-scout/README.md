@@ -1,8 +1,12 @@
 # Biotech Risk Scout
 
-This project is an early prototype of an **AI Special Situations Research Agent** focused on small-cap biotechnology companies. It aims to surface tickers with upcoming catalysts, analyze their cash runway and potential dilution risk, and generate concise research cards summarizing why a situation is interesting **and** how it could blow up.
+This project is an early prototype of an **AI Special Situations Research Agent** focused on small-cap biotechnology companies. It aims to surface tickers with upcoming catalysts, analyze cash runway and potential dilution risk, and generate concise research cards summarizing why a situation is interesting **and** how it could go wrong.
 
-At this stage, the implementation consists of stubs that illustrate the expected architecture. Future work will replace these stubs with real integrations to the SEC EDGAR API, ClinicalTrials.gov, openFDA, and market data sources.
+## Current Status
+
+The SEC filings layer now uses the SEC-maintained EDGAR company-submissions JSON endpoint. It can resolve a ticker to CIK, fetch recent filing metadata, identify the latest 10-Q, 10-K, and 8-K, and flag recent financing-related forms such as S-1, S-3, 424B filings, and FWP filings.
+
+The ClinicalTrials.gov layer is still a stub. Cash runway and burn-rate extraction are also still pending because they require XBRL company-facts parsing or full filing text extraction.
 
 ## Layout
 
@@ -15,31 +19,32 @@ biotech-risk-scout/
 └── README.md
 ```
 
-## Ingestion
+## SEC EDGAR Setup
 
-The `scout.ingest` package currently defines two functions:
+The SEC asks scripted tools to declare a descriptive User-Agent. Before making repeated requests, set an environment variable with your name or app name and contact email.
 
-- `fetch_sec_filings(ticker)` returns a placeholder dictionary with mock financial information extracted from SEC filings.
-- `fetch_clinical_trials(ticker)` returns a placeholder dictionary describing an upcoming clinical trial catalyst.
+PowerShell:
 
-These functions should be expanded to retrieve and parse real data.
+```powershell
+$env:SEC_USER_AGENT="BiotechRiskScout kaiveonday@gmail.com"
+```
 
-## Reports
+macOS/Linux:
 
-`scout.reports.research_card` defines a `ResearchCard` dataclass that holds the key attributes of a diligence memo. It provides a factory method `from_sources()` to construct a card from ingestion outputs and a `to_text()` method to render the card as plain text.
+```bash
+export SEC_USER_AGENT="BiotechRiskScout kaiveonday@gmail.com"
+```
 
 ## CLI
 
-Run the CLI with:
+Run the CLI with a real ticker:
 
 ```bash
-python biotech-risk-scout/app/main.py TICKER
+python biotech-risk-scout/app/main.py MRNA
 ```
 
-Example:
+The output describes why the ticker surfaced, the catalyst, SEC filer match, latest 10-Q/10-K/8-K metadata, dilution-risk flag, evidence quality, main risk, and next diligence steps.
 
-```bash
-python biotech-risk-scout/app/main.py ABCD
-```
+## Next Engineering Step
 
-The output describes why the ticker surfaced, the catalyst, cash runway, dilution risk, evidence quality, main blow-up risk, and suggested next diligence steps.
+Replace the ClinicalTrials.gov stub with a real trial search client that maps public company tickers to sponsor/legal names and returns active trials, phases, enrollment, endpoints, and estimated completion dates.
