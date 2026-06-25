@@ -6,7 +6,7 @@ import sys
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
-from app.scan import export_rows_to_csv, export_rows_to_json  # noqa: E402
+from app.scan import export_rows_to_csv, export_rows_to_json, parse_ticker_text, resolve_tickers  # noqa: E402
 from scout.scoring.research_priority import PriorityScore  # noqa: E402
 
 
@@ -82,3 +82,22 @@ def test_exports_respect_min_score(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert len(payload) == 1
     assert payload[0]["ticker"] == "HIGH"
+
+
+def test_parse_ticker_text_handles_comments_commas_and_duplicates():
+    text = """
+    # Core watchlist
+    mrna, vktx
+    SAVA
+    MRNA  # duplicate
+    prax crsp
+    """
+
+    assert parse_ticker_text(text) == ["MRNA", "VKTX", "SAVA", "PRAX", "CRSP"]
+
+
+def test_resolve_tickers_merges_cli_and_file_tickers(tmp_path):
+    tickers_file = tmp_path / "watchlist.txt"
+    tickers_file.write_text("vktx\nsava\nMRNA\n", encoding="utf-8")
+
+    assert resolve_tickers(["mrna", "crsp"], str(tickers_file)) == ["MRNA", "CRSP", "VKTX", "SAVA"]
