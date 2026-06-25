@@ -12,16 +12,19 @@ The ClinicalTrials.gov layer uses the ClinicalTrials.gov API v2 studies endpoint
 
 The research card output is now structured like a diligence card, with separate catalyst, financial runway, SEC filings, risk read, and data-note sections.
 
+The scanner now ranks multiple tickers with a 0-100 research-priority score. The score is a diligence-queue tool only, not an investment recommendation.
+
 The cash-runway logic is still a first-pass heuristic. It should be reviewed against actual filings before being used for serious diligence.
 
 ## Layout
 
 ```txt
 biotech-risk-scout/
-├── app/               # CLI entry point
+├── app/               # CLI entry points
 ├── scout/
 │   ├── ingest/        # Data ingestion modules
-│   └── reports/       # Report and research card abstractions
+│   ├── reports/       # Report and research card abstractions
+│   └── scoring/       # Research-priority scoring
 └── README.md
 ```
 
@@ -43,13 +46,19 @@ export SEC_USER_AGENT="BiotechRiskScout kaiveonday@gmail.com"
 
 ## CLI
 
-Run the CLI with a real ticker:
+Generate a single-ticker card:
 
 ```bash
 python biotech-risk-scout/app/main.py MRNA
 ```
 
-The output includes company match, catalyst summary, trial count, cash, operating cash flow, monthly burn, runway months, dilution risk, latest SEC filings, main risk, and next diligence steps.
+Scan and rank multiple tickers:
+
+```bash
+python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP
+```
+
+The scanner prints rank, ticker, score, catalyst, days, runway, dilution risk, evidence quality, trial count, main reason, and main risk.
 
 ## Tests
 
@@ -59,8 +68,8 @@ Run offline unit tests with:
 python -m pytest -q biotech-risk-scout/tests
 ```
 
-The current tests validate the first-pass SEC company-facts cash runway calculation and the research card output without depending on live SEC requests.
+The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, and the research-priority scoring rubric without depending on live SEC requests.
 
 ## Next Engineering Step
 
-Improve ticker-to-sponsor mapping by using the SEC company name as a fallback for ClinicalTrials.gov sponsor searches, then add more fixtures around the SEC company-facts cash runway calculations.
+Improve ticker-to-sponsor mapping by using the SEC company name as a fallback for ClinicalTrials.gov sponsor searches, then add CSV/JSON output for scan results.
