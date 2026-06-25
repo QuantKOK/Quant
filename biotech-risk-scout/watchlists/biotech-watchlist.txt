@@ -1,0 +1,9 @@
+# Default Biotech Risk Scout watchlist
+# Add tickers separated by newlines, spaces, or commas.
+# Keep this list small while the scanner uses live public APIs.
+
+MRNA
+VKTX
+SAVA
+PRAX
+CRSP
