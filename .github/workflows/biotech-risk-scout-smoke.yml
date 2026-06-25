@@ -6,6 +6,8 @@ on:
       - "biotech-risk-scout/**"
       - ".github/workflows/biotech-risk-scout-smoke.yml"
   workflow_dispatch:
+  schedule:
+    - cron: "30 12 * * 1-5"
 
 jobs:
   smoke:
@@ -27,3 +29,27 @@ jobs:
 
       - name: Unit tests
         run: python -m pytest -q biotech-risk-scout/tests
+
+  scheduled-scan:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: smoke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run daily scan
+        env:
+          SEC_USER_AGENT: BiotechRiskScout kaiveonday@gmail.com
+        run: python biotech-risk-scout/scripts/run_daily_scan.py --no-table --output-dir biotech-risk-scout/snapshots
+
+      - name: Upload scan artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: biotech-risk-scout-snapshots
+          path: biotech-risk-scout/snapshots
