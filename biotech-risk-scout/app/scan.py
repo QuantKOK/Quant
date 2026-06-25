@@ -8,7 +8,6 @@ import csv
 import json
 import os
 import sys
-from dataclasses import asdict
 from typing import Any
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
