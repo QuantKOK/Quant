@@ -49,6 +49,16 @@ python biotech-risk-scout/app/main.py MRNA
 
 The output describes why the ticker surfaced, the catalyst, SEC filer match, latest 10-Q/10-K/8-K metadata, dilution-risk flag, evidence quality, main risk, and next diligence steps.
 
+## Tests
+
+Run offline unit tests with:
+
+```bash
+python -m pytest -q biotech-risk-scout/tests
+```
+
+The current tests validate the first-pass SEC company-facts cash runway calculation without depending on live SEC requests.
+
 ## Next Engineering Step
 
-Improve ticker-to-sponsor mapping by using the SEC company name as a fallback for ClinicalTrials.gov sponsor searches, then add tests/fixtures around the SEC company-facts cash runway calculations.
+Improve ticker-to-sponsor mapping by using the SEC company name as a fallback for ClinicalTrials.gov sponsor searches, then add more fixtures around the SEC company-facts cash runway calculations.
