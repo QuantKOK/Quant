@@ -148,6 +148,45 @@ def export_rows_to_csv(rows: list[dict[str, Any]], path: str, min_score: int = 0
         writer.writerows(payload)
 
 
+def load_tickers_from_file(path: str) -> list[str]:
+    """Load tickers from a file with newline and comma support."""
+    with open(path, "r", encoding="utf-8") as handle:
+        return parse_ticker_text(handle.read())
+
+
+def parse_ticker_text(text: str) -> list[str]:
+    """Parse tickers from newline/comma-separated text, ignoring comments."""
+    tickers: list[str] = []
+    seen: set[str] = set()
+    for raw_line in text.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        for piece in line.replace(",", " ").split():
+            ticker = piece.strip().upper()
+            if ticker and ticker not in seen:
+                seen.add(ticker)
+                tickers.append(ticker)
+    return tickers
+
+
+def resolve_tickers(cli_tickers: list[str], tickers_file: str | None) -> list[str]:
+    """Merge positional tickers and optional file tickers while preserving order."""
+    combined: list[str] = []
+    seen: set[str] = set()
+    for ticker in cli_tickers:
+        normalized = ticker.strip().upper()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            combined.append(normalized)
+    if tickers_file:
+        for ticker in load_tickers_from_file(tickers_file):
+            if ticker not in seen:
+                seen.add(ticker)
+                combined.append(ticker)
+    return combined
+
+
 def _export_record(rank: int, row: dict[str, Any]) -> dict[str, Any]:
     data = row.get("data", {})
     priority: PriorityScore = row["priority"]
@@ -228,14 +267,19 @@ def _filing_date(filing: Any) -> Any:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Rank biotech tickers by research priority.")
-    parser.add_argument("tickers", nargs="+", help="Ticker symbols to scan")
+    parser.add_argument("tickers", nargs="*", help="Ticker symbols to scan")
+    parser.add_argument("--tickers-file", help="Optional newline/comma-separated ticker file")
     parser.add_argument("--min-score", type=int, default=0, help="Minimum score to display/export")
     parser.add_argument("--json", dest="json_path", help="Optional path to write JSON scan results")
     parser.add_argument("--csv", dest="csv_path", help="Optional path to write CSV scan results")
     parser.add_argument("--no-table", action="store_true", help="Do not print the table; useful for export-only runs")
     args = parser.parse_args(argv)
 
-    rows = scan_tickers(args.tickers)
+    tickers = resolve_tickers(args.tickers, args.tickers_file)
+    if not tickers:
+        parser.error("provide at least one ticker or --tickers-file")
+
+    rows = scan_tickers(tickers)
     if not args.no_table:
         print_scan_table(rows, min_score=args.min_score)
     if args.json_path:
