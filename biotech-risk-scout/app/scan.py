@@ -14,6 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from scout.ingest.clinical_trials import fetch_clinical_trials  # type: ignore
 from scout.ingest.sec_filings import SecClientError, fetch_sec_filings  # type: ignore
+from scout.reports.alerts import write_alert_report  # type: ignore
 from scout.reports.research_card import ResearchCard  # type: ignore
 from scout.scoring.research_priority import PriorityScore, compute_priority_score  # type: ignore
 from scout.storage.snapshots import compare_snapshots, format_snapshot_comparison, load_snapshot, write_snapshot  # type: ignore
@@ -291,6 +292,7 @@ def main(argv=None) -> int:
     parser.add_argument("--snapshot-dir", help="Optional directory to write scan-YYYYMMDD.json and latest.json")
     parser.add_argument("--compare-snapshots", nargs=2, metavar=("OLD", "NEW"), help="Compare two snapshot JSON files and exit")
     parser.add_argument("--compare-json", dest="compare_json_path", help="Optional path to write snapshot comparison JSON")
+    parser.add_argument("--alert-report", dest="alert_report_path", help="Optional path to write a markdown alert report from snapshot comparison")
     parser.add_argument("--no-table", action="store_true", help="Do not print the table; useful for export-only runs")
     args = parser.parse_args(argv)
 
@@ -301,7 +303,12 @@ def main(argv=None) -> int:
             with open(args.compare_json_path, "w", encoding="utf-8") as handle:
                 json.dump(comparison, handle, indent=2)
                 handle.write("\n")
+        if args.alert_report_path:
+            write_alert_report(comparison, args.alert_report_path)
         return 0
+
+    if args.alert_report_path:
+        parser.error("--alert-report requires --compare-snapshots OLD NEW")
 
     tickers = resolve_tickers(args.tickers, args.tickers_file)
     if not tickers:
