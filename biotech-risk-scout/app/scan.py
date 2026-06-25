@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import json
 import os
 import sys
+from dataclasses import asdict
 from typing import Any
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -14,6 +17,30 @@ from scout.ingest.clinical_trials import fetch_clinical_trials  # type: ignore
 from scout.ingest.sec_filings import SecClientError, fetch_sec_filings  # type: ignore
 from scout.reports.research_card import ResearchCard  # type: ignore
 from scout.scoring.research_priority import PriorityScore, compute_priority_score  # type: ignore
+
+EXPORT_COLUMNS = [
+    "rank",
+    "ticker",
+    "company_name",
+    "score",
+    "main_reason",
+    "red_flag_summary",
+    "upcoming_catalyst",
+    "days_until_event",
+    "trial_count",
+    "active_trial_count",
+    "evidence_quality",
+    "cash",
+    "operating_cash_flow",
+    "monthly_burn",
+    "cash_runway_months",
+    "dilution_risk",
+    "has_shelf",
+    "has_recent_financing_form",
+    "latest_10q_date",
+    "latest_10k_date",
+    "latest_8k_date",
+]
 
 
 def build_scan_row(ticker: str) -> dict[str, Any]:
@@ -67,7 +94,7 @@ def scan_tickers(tickers: list[str]) -> list[dict[str, Any]]:
 
 def print_scan_table(rows: list[dict[str, Any]], min_score: int = 0) -> None:
     """Print a compact ranked scanner table."""
-    filtered = [row for row in rows if row["priority"].score >= min_score]
+    filtered = _filter_rows(rows, min_score)
     headers = [
         "Rank",
         "Ticker",
@@ -103,6 +130,55 @@ def print_scan_table(rows: list[dict[str, Any]], min_score: int = 0) -> None:
             _truncate(card.main_risk if card else priority.red_flag_summary, 25),
         ]
         print(_format_row(values, widths))
+
+
+def export_rows_to_json(rows: list[dict[str, Any]], path: str, min_score: int = 0) -> None:
+    """Write ranked scan rows to JSON."""
+    payload = [_export_record(rank, row) for rank, row in enumerate(_filter_rows(rows, min_score), start=1)]
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+
+
+def export_rows_to_csv(rows: list[dict[str, Any]], path: str, min_score: int = 0) -> None:
+    """Write ranked scan rows to CSV."""
+    payload = [_export_record(rank, row) for rank, row in enumerate(_filter_rows(rows, min_score), start=1)]
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=EXPORT_COLUMNS)
+        writer.writeheader()
+        writer.writerows(payload)
+
+
+def _export_record(rank: int, row: dict[str, Any]) -> dict[str, Any]:
+    data = row.get("data", {})
+    priority: PriorityScore = row["priority"]
+    return {
+        "rank": rank,
+        "ticker": row.get("ticker"),
+        "company_name": data.get("company_name"),
+        "score": priority.score,
+        "main_reason": priority.main_reason,
+        "red_flag_summary": priority.red_flag_summary,
+        "upcoming_catalyst": data.get("upcoming_catalyst"),
+        "days_until_event": data.get("days_until_event"),
+        "trial_count": data.get("trial_count"),
+        "active_trial_count": data.get("active_trial_count"),
+        "evidence_quality": data.get("evidence_quality"),
+        "cash": data.get("cash"),
+        "operating_cash_flow": data.get("operating_cash_flow"),
+        "monthly_burn": data.get("monthly_burn"),
+        "cash_runway_months": data.get("cash_runway_months"),
+        "dilution_risk": data.get("dilution_risk"),
+        "has_shelf": data.get("has_shelf"),
+        "has_recent_financing_form": data.get("has_recent_financing_form"),
+        "latest_10q_date": _filing_date(data.get("latest_10q")),
+        "latest_10k_date": _filing_date(data.get("latest_10k")),
+        "latest_8k_date": _filing_date(data.get("latest_8k")),
+    }
+
+
+def _filter_rows(rows: list[dict[str, Any]], min_score: int) -> list[dict[str, Any]]:
+    return [row for row in rows if row["priority"].score >= min_score]
 
 
 def _sort_days(row: dict[str, Any]) -> int:
@@ -145,14 +221,28 @@ def _short_evidence(value: Any) -> str:
     return mapping.get(str(value), str(value))
 
 
+def _filing_date(filing: Any) -> Any:
+    if not isinstance(filing, dict):
+        return None
+    return filing.get("filing_date") or filing.get("filed")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Rank biotech tickers by research priority.")
     parser.add_argument("tickers", nargs="+", help="Ticker symbols to scan")
-    parser.add_argument("--min-score", type=int, default=0, help="Minimum score to display")
+    parser.add_argument("--min-score", type=int, default=0, help="Minimum score to display/export")
+    parser.add_argument("--json", dest="json_path", help="Optional path to write JSON scan results")
+    parser.add_argument("--csv", dest="csv_path", help="Optional path to write CSV scan results")
+    parser.add_argument("--no-table", action="store_true", help="Do not print the table; useful for export-only runs")
     args = parser.parse_args(argv)
 
     rows = scan_tickers(args.tickers)
-    print_scan_table(rows, min_score=args.min_score)
+    if not args.no_table:
+        print_scan_table(rows, min_score=args.min_score)
+    if args.json_path:
+        export_rows_to_json(rows, args.json_path, min_score=args.min_score)
+    if args.csv_path:
+        export_rows_to_csv(rows, args.csv_path, min_score=args.min_score)
     return 0
 
 
