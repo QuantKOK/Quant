@@ -14,7 +14,7 @@ The research card output is now structured like a diligence card, with separate 
 
 The scanner now ranks multiple tickers with a 0-100 research-priority score. The score is a diligence-queue tool only, not an investment recommendation.
 
-The scanner can also export ranked results to CSV and JSON for saved watchlists, spreadsheet review, and future score-change tracking.
+The scanner can export ranked results to CSV and JSON for saved watchlists, spreadsheet review, and future score-change tracking. It also supports watchlist files through `--tickers-file`.
 
 The cash-runway logic is still a first-pass heuristic. It should be reviewed against actual filings before being used for serious diligence.
 
@@ -60,12 +60,20 @@ Scan and rank multiple tickers:
 python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP
 ```
 
+Scan from a watchlist file:
+
+```bash
+python biotech-risk-scout/app/scan.py --tickers-file biotech-watchlist.txt
+```
+
+Watchlist files can use newlines, commas, spaces, blank lines, and `#` comments.
+
 Export scan results:
 
 ```bash
 python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP --json scan.json
 python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP --csv scan.csv
-python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP --csv scan.csv --json scan.json --no-table
+python biotech-risk-scout/app/scan.py --tickers-file biotech-watchlist.txt --csv scan.csv --json scan.json --no-table
 ```
 
 The scanner prints rank, ticker, score, catalyst, days, runway, dilution risk, evidence quality, trial count, main reason, and main risk.
@@ -80,8 +88,8 @@ Run offline unit tests with:
 python -m pytest -q biotech-risk-scout/tests
 ```
 
-The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, the research-priority scoring rubric, and scanner CSV/JSON exports without depending on live SEC requests.
+The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, and ticker-file parsing without depending on live SEC requests.
 
 ## Next Engineering Step
 
-Add ticker universe input with `--tickers-file`, then support daily saved scan snapshots for score-change tracking.
+Support daily saved scan snapshots for score-change tracking.
