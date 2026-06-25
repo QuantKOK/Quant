@@ -4,9 +4,11 @@ This project is an early prototype of an **AI Special Situations Research Agent*
 
 ## Current Status
 
-The SEC filings layer now uses the SEC-maintained EDGAR company-submissions JSON endpoint. It can resolve a ticker to CIK, fetch recent filing metadata, identify the latest 10-Q, 10-K, and 8-K, and flag recent financing-related forms such as S-1, S-3, 424B filings, and FWP filings.
+The SEC filings layer uses the SEC-maintained EDGAR company-submissions JSON endpoint. It can resolve a ticker to CIK, fetch recent filing metadata, identify the latest 10-Q, 10-K, and 8-K, and flag recent financing-related forms such as S-1, S-3, 424B filings, and FWP filings.
 
-The ClinicalTrials.gov layer is still a stub. Cash runway and burn-rate extraction are also still pending because they require XBRL company-facts parsing or full filing text extraction.
+The ClinicalTrials.gov layer now uses the ClinicalTrials.gov API v2 studies endpoint. It can search by sponsor/company name, map selected tickers to sponsor names, pull study metadata, estimate the nearest active primary-completion catalyst, and return trial details for research cards.
+
+Cash runway and burn-rate extraction are still pending because they require XBRL company-facts parsing or full filing text extraction.
 
 ## Layout
 
@@ -47,4 +49,4 @@ The output describes why the ticker surfaced, the catalyst, SEC filer match, lat
 
 ## Next Engineering Step
 
-Replace the ClinicalTrials.gov stub with a real trial search client that maps public company tickers to sponsor/legal names and returns active trials, phases, enrollment, endpoints, and estimated completion dates.
+Improve ticker-to-sponsor mapping by using the SEC company name as a fallback for ClinicalTrials.gov sponsor searches, then build XBRL company-facts parsing for cash and burn-rate extraction.
