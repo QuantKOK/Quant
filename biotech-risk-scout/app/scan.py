@@ -16,7 +16,7 @@ from scout.ingest.clinical_trials import fetch_clinical_trials  # type: ignore
 from scout.ingest.sec_filings import SecClientError, fetch_sec_filings  # type: ignore
 from scout.reports.research_card import ResearchCard  # type: ignore
 from scout.scoring.research_priority import PriorityScore, compute_priority_score  # type: ignore
-from scout.storage.snapshots import write_snapshot  # type: ignore
+from scout.storage.snapshots import compare_snapshots, format_snapshot_comparison, load_snapshot, write_snapshot  # type: ignore
 
 EXPORT_COLUMNS = [
     "rank",
@@ -159,6 +159,11 @@ def export_snapshot(rows: list[dict[str, Any]], snapshot_dir: str, min_score: in
     return write_snapshot(export_records(rows, min_score=min_score), snapshot_dir)
 
 
+def compare_snapshot_files(old_path: str, new_path: str) -> dict[str, Any]:
+    """Load and compare two snapshot files."""
+    return compare_snapshots(load_snapshot(old_path), load_snapshot(new_path))
+
+
 def load_tickers_from_file(path: str) -> list[str]:
     """Load tickers from a file with newline and comma support."""
     with open(path, "r", encoding="utf-8") as handle:
@@ -284,12 +289,23 @@ def main(argv=None) -> int:
     parser.add_argument("--json", dest="json_path", help="Optional path to write JSON scan results")
     parser.add_argument("--csv", dest="csv_path", help="Optional path to write CSV scan results")
     parser.add_argument("--snapshot-dir", help="Optional directory to write scan-YYYYMMDD.json and latest.json")
+    parser.add_argument("--compare-snapshots", nargs=2, metavar=("OLD", "NEW"), help="Compare two snapshot JSON files and exit")
+    parser.add_argument("--compare-json", dest="compare_json_path", help="Optional path to write snapshot comparison JSON")
     parser.add_argument("--no-table", action="store_true", help="Do not print the table; useful for export-only runs")
     args = parser.parse_args(argv)
 
+    if args.compare_snapshots:
+        comparison = compare_snapshot_files(args.compare_snapshots[0], args.compare_snapshots[1])
+        print(format_snapshot_comparison(comparison))
+        if args.compare_json_path:
+            with open(args.compare_json_path, "w", encoding="utf-8") as handle:
+                json.dump(comparison, handle, indent=2)
+                handle.write("\n")
+        return 0
+
     tickers = resolve_tickers(args.tickers, args.tickers_file)
     if not tickers:
-        parser.error("provide at least one ticker or --tickers-file")
+        parser.error("provide at least one ticker, --tickers-file, or --compare-snapshots OLD NEW")
 
     rows = scan_tickers(tickers)
     if not args.no_table:
