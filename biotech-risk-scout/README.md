@@ -16,6 +16,8 @@ The scanner now ranks multiple tickers with a 0-100 research-priority score. The
 
 The scanner can export ranked results to CSV and JSON for saved watchlists, spreadsheet review, and future score-change tracking. It also supports watchlist files through `--tickers-file`, dated scan snapshots through `--snapshot-dir`, and snapshot comparisons through `--compare-snapshots`.
 
+A local daily-scan runner and weekday GitHub Actions schedule can run the default watchlist, save snapshots, and upload snapshot artifacts.
+
 The cash-runway logic is still a first-pass heuristic. It should be reviewed against actual filings before being used for serious diligence.
 
 ## Layout
@@ -23,6 +25,8 @@ The cash-runway logic is still a first-pass heuristic. It should be reviewed aga
 ```txt
 biotech-risk-scout/
 ├── app/               # CLI entry points
+├── scripts/           # Local automation scripts
+├── watchlists/        # Watchlist inputs
 ├── scout/
 │   ├── ingest/        # Data ingestion modules
 │   ├── reports/       # Report and research card abstractions
@@ -94,6 +98,14 @@ python biotech-risk-scout/app/scan.py --compare-snapshots snapshots/scan-2026062
 
 Snapshot comparison reports added tickers, removed tickers, score changes, rank changes, catalyst/date changes, runway changes, dilution changes, and evidence-quality changes.
 
+Run the local daily watchlist scan:
+
+```bash
+python biotech-risk-scout/scripts/run_daily_scan.py --no-table
+```
+
+The default watchlist lives at `biotech-risk-scout/watchlists/biotech-watchlist.txt`. The script writes CSV, JSON record exports, `scan-YYYYMMDD.json`, and `latest.json` into `biotech-risk-scout/snapshots` by default.
+
 The scanner prints rank, ticker, score, catalyst, days, runway, dilution risk, evidence quality, trial count, main reason, and main risk.
 
 Exports include ticker, company name, score, reason, red flags, catalyst, days, trial counts, evidence quality, cash, burn, runway, dilution risk, financing flags, and latest filing dates.
@@ -108,6 +120,10 @@ python -m pytest -q biotech-risk-scout/tests
 
 The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, and snapshot comparison without depending on live SEC requests.
 
+## GitHub Actions
+
+The smoke workflow compiles the project and runs all offline tests on pushes touching Biotech Risk Scout. It also supports manual runs and a weekday scheduled scan that uploads snapshot artifacts.
+
 ## Next Engineering Step
 
-Add a lightweight GitHub Actions workflow or local script for scheduled watchlist scans and snapshot artifact retention.
+Add alerts from snapshot comparisons so large score moves, new catalysts, and fresh dilution risk can be surfaced automatically.
