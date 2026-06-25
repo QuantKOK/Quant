@@ -1,6 +1,6 @@
 # Biotech Risk Scout
 
-This project is an early prototype of an **AI Special Situations Research Agent** focused on small-cap biotechnology companies. It aims to surface tickers with upcoming catalysts, analyze cash runway and potential dilution risk, and generate concise research cards summarizing why a situation is interesting **and** how it could go wrong.
+This project is an early prototype of an AI Special Situations Research Agent focused on small-cap biotechnology companies. It aims to surface tickers with upcoming catalysts, analyze cash runway and potential dilution risk, and generate concise research cards summarizing why a situation is interesting and how it could go wrong.
 
 ## Current Status
 
@@ -10,7 +10,9 @@ The SEC layer also uses the SEC company-facts XBRL endpoint for a first-pass cas
 
 The ClinicalTrials.gov layer uses the ClinicalTrials.gov API v2 studies endpoint. It can search by sponsor/company name, map selected tickers to sponsor names, pull study metadata, estimate the nearest active primary-completion catalyst, and return trial details for research cards.
 
-The cash-runway logic is still a first-pass heuristic. It should be reviewed against actual filings before being used for any serious diligence.
+The research card output is now structured like a diligence card, with separate catalyst, financial runway, SEC filings, risk read, and data-note sections.
+
+The cash-runway logic is still a first-pass heuristic. It should be reviewed against actual filings before being used for serious diligence.
 
 ## Layout
 
@@ -47,7 +49,7 @@ Run the CLI with a real ticker:
 python biotech-risk-scout/app/main.py MRNA
 ```
 
-The output describes why the ticker surfaced, the catalyst, SEC filer match, latest 10-Q/10-K/8-K metadata, dilution-risk flag, evidence quality, main risk, and next diligence steps.
+The output includes company match, catalyst summary, trial count, cash, operating cash flow, monthly burn, runway months, dilution risk, latest SEC filings, main risk, and next diligence steps.
 
 ## Tests
 
@@ -57,7 +59,7 @@ Run offline unit tests with:
 python -m pytest -q biotech-risk-scout/tests
 ```
 
-The current tests validate the first-pass SEC company-facts cash runway calculation without depending on live SEC requests.
+The current tests validate the first-pass SEC company-facts cash runway calculation and the research card output without depending on live SEC requests.
 
 ## Next Engineering Step
 
