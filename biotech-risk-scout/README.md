@@ -14,7 +14,7 @@ The research card output is now structured like a diligence card, with separate 
 
 The scanner now ranks multiple tickers with a 0-100 research-priority score. The score is a diligence-queue tool only, not an investment recommendation.
 
-The scanner can export ranked results to CSV and JSON for saved watchlists, spreadsheet review, and future score-change tracking. It also supports watchlist files through `--tickers-file`.
+The scanner can export ranked results to CSV and JSON for saved watchlists, spreadsheet review, and future score-change tracking. It also supports watchlist files through `--tickers-file` and dated scan snapshots through `--snapshot-dir`.
 
 The cash-runway logic is still a first-pass heuristic. It should be reviewed against actual filings before being used for serious diligence.
 
@@ -26,7 +26,8 @@ biotech-risk-scout/
 ├── scout/
 │   ├── ingest/        # Data ingestion modules
 │   ├── reports/       # Report and research card abstractions
-│   └── scoring/       # Research-priority scoring
+│   ├── scoring/       # Research-priority scoring
+│   └── storage/       # Snapshot/output storage helpers
 └── README.md
 ```
 
@@ -76,6 +77,14 @@ python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP --csv scan.csv
 python biotech-risk-scout/app/scan.py --tickers-file biotech-watchlist.txt --csv scan.csv --json scan.json --no-table
 ```
 
+Save a dated scan snapshot:
+
+```bash
+python biotech-risk-scout/app/scan.py --tickers-file biotech-watchlist.txt --snapshot-dir snapshots --no-table
+```
+
+This writes both `snapshots/scan-YYYYMMDD.json` and `snapshots/latest.json`.
+
 The scanner prints rank, ticker, score, catalyst, days, runway, dilution risk, evidence quality, trial count, main reason, and main risk.
 
 Exports include ticker, company name, score, reason, red flags, catalyst, days, trial counts, evidence quality, cash, burn, runway, dilution risk, financing flags, and latest filing dates.
@@ -88,8 +97,8 @@ Run offline unit tests with:
 python -m pytest -q biotech-risk-scout/tests
 ```
 
-The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, and ticker-file parsing without depending on live SEC requests.
+The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, and scan snapshot writing without depending on live SEC requests.
 
 ## Next Engineering Step
 
-Support daily saved scan snapshots for score-change tracking.
+Add snapshot comparison so the tool can report score changes, new tickers, dropped tickers, and catalyst/date changes between runs.
