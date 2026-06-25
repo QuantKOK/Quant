@@ -52,3 +52,102 @@ def write_snapshot(records: list[dict[str, Any]], snapshot_dir: str, timestamp: 
             handle.write("\n")
 
     return {"snapshot_path": dated_path, "latest_path": latest_path}
+
+
+def load_snapshot(path: str) -> dict[str, Any]:
+    """Load a snapshot payload from disk."""
+    with open(path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if isinstance(payload, list):
+        return build_snapshot_payload(payload, timestamp="unknown")
+    return payload
+
+
+def compare_snapshots(old_snapshot: dict[str, Any], new_snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compare two scan snapshots by ticker."""
+    old_records = _records_by_ticker(old_snapshot.get("records", []))
+    new_records = _records_by_ticker(new_snapshot.get("records", []))
+
+    old_tickers = set(old_records)
+    new_tickers = set(new_records)
+
+    added = sorted(new_tickers - old_tickers)
+    removed = sorted(old_tickers - new_tickers)
+    common = sorted(old_tickers & new_tickers)
+
+    changed: list[dict[str, Any]] = []
+    for ticker in common:
+        old = old_records[ticker]
+        new = new_records[ticker]
+        score_delta = _safe_number(new.get("score"), 0) - _safe_number(old.get("score"), 0)
+        changes: dict[str, Any] = {}
+        for field in ("score", "rank", "upcoming_catalyst", "days_until_event", "cash_runway_months", "dilution_risk", "evidence_quality"):
+            if old.get(field) != new.get(field):
+                changes[field] = {"old": old.get(field), "new": new.get(field)}
+        if changes:
+            changed.append(
+                {
+                    "ticker": ticker,
+                    "score_delta": score_delta,
+                    "old_score": old.get("score"),
+                    "new_score": new.get("score"),
+                    "changes": changes,
+                }
+            )
+
+    changed.sort(key=lambda item: abs(item["score_delta"]), reverse=True)
+    return {
+        "old_generated_at": old_snapshot.get("generated_at"),
+        "new_generated_at": new_snapshot.get("generated_at"),
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+        "summary": {
+            "added_count": len(added),
+            "removed_count": len(removed),
+            "changed_count": len(changed),
+        },
+    }
+
+
+def format_snapshot_comparison(comparison: dict[str, Any], max_changes: int = 20) -> str:
+    """Return a readable snapshot comparison report."""
+    summary = comparison.get("summary", {})
+    lines = [
+        "Snapshot Comparison",
+        "-------------------",
+        f"Old: {comparison.get('old_generated_at')}",
+        f"New: {comparison.get('new_generated_at')}",
+        f"Added: {summary.get('added_count', 0)} | Removed: {summary.get('removed_count', 0)} | Changed: {summary.get('changed_count', 0)}",
+    ]
+
+    if comparison.get("added"):
+        lines.extend(["", "Added tickers:", ", ".join(comparison["added"])])
+    if comparison.get("removed"):
+        lines.extend(["", "Removed tickers:", ", ".join(comparison["removed"])])
+    if comparison.get("changed"):
+        lines.extend(["", "Changed tickers:"])
+        for item in comparison["changed"][:max_changes]:
+            delta = item.get("score_delta", 0)
+            sign = "+" if delta > 0 else ""
+            lines.append(
+                f"- {item['ticker']}: score {item.get('old_score')} -> {item.get('new_score')} ({sign}{delta})"
+            )
+            for field, values in item.get("changes", {}).items():
+                if field == "score":
+                    continue
+                lines.append(f"  {field}: {values.get('old')} -> {values.get('new')}")
+    return "\n".join(lines)
+
+
+def _records_by_ticker(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {str(record.get("ticker", "")).upper(): record for record in records if record.get("ticker")}
+
+
+def _safe_number(value: Any, default: float) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
