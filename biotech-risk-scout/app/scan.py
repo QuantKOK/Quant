@@ -16,6 +16,7 @@ from scout.ingest.clinical_trials import fetch_clinical_trials  # type: ignore
 from scout.ingest.sec_filings import SecClientError, fetch_sec_filings  # type: ignore
 from scout.reports.research_card import ResearchCard  # type: ignore
 from scout.scoring.research_priority import PriorityScore, compute_priority_score  # type: ignore
+from scout.storage.snapshots import write_snapshot  # type: ignore
 
 EXPORT_COLUMNS = [
     "rank",
@@ -133,7 +134,7 @@ def print_scan_table(rows: list[dict[str, Any]], min_score: int = 0) -> None:
 
 def export_rows_to_json(rows: list[dict[str, Any]], path: str, min_score: int = 0) -> None:
     """Write ranked scan rows to JSON."""
-    payload = [_export_record(rank, row) for rank, row in enumerate(_filter_rows(rows, min_score), start=1)]
+    payload = export_records(rows, min_score=min_score)
     with open(path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
         handle.write("\n")
@@ -141,11 +142,21 @@ def export_rows_to_json(rows: list[dict[str, Any]], path: str, min_score: int = 
 
 def export_rows_to_csv(rows: list[dict[str, Any]], path: str, min_score: int = 0) -> None:
     """Write ranked scan rows to CSV."""
-    payload = [_export_record(rank, row) for rank, row in enumerate(_filter_rows(rows, min_score), start=1)]
+    payload = export_records(rows, min_score=min_score)
     with open(path, "w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=EXPORT_COLUMNS)
         writer.writeheader()
         writer.writerows(payload)
+
+
+def export_records(rows: list[dict[str, Any]], min_score: int = 0) -> list[dict[str, Any]]:
+    """Return ranked export records for JSON, CSV, and snapshots."""
+    return [_export_record(rank, row) for rank, row in enumerate(_filter_rows(rows, min_score), start=1)]
+
+
+def export_snapshot(rows: list[dict[str, Any]], snapshot_dir: str, min_score: int = 0) -> dict[str, str]:
+    """Write a dated JSON snapshot plus latest.json."""
+    return write_snapshot(export_records(rows, min_score=min_score), snapshot_dir)
 
 
 def load_tickers_from_file(path: str) -> list[str]:
@@ -272,6 +283,7 @@ def main(argv=None) -> int:
     parser.add_argument("--min-score", type=int, default=0, help="Minimum score to display/export")
     parser.add_argument("--json", dest="json_path", help="Optional path to write JSON scan results")
     parser.add_argument("--csv", dest="csv_path", help="Optional path to write CSV scan results")
+    parser.add_argument("--snapshot-dir", help="Optional directory to write scan-YYYYMMDD.json and latest.json")
     parser.add_argument("--no-table", action="store_true", help="Do not print the table; useful for export-only runs")
     args = parser.parse_args(argv)
 
@@ -286,6 +298,8 @@ def main(argv=None) -> int:
         export_rows_to_json(rows, args.json_path, min_score=args.min_score)
     if args.csv_path:
         export_rows_to_csv(rows, args.csv_path, min_score=args.min_score)
+    if args.snapshot_dir:
+        export_snapshot(rows, args.snapshot_dir, min_score=args.min_score)
     return 0
 
 
