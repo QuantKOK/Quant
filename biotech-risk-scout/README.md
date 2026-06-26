@@ -4,7 +4,7 @@ This project is an early prototype of an AI Special Situations Research Agent fo
 
 ## Current Status
 
-The SEC filings layer uses the SEC-maintained EDGAR company-submissions JSON endpoint. It can resolve a ticker to CIK, fetch recent filing metadata, identify the latest 10-Q, 10-K, and 8-K, and flag recent financing-related forms such as S-1, S-3, 424B filings, and FWP filings.
+The SEC filings layer uses the SEC-maintained EDGAR company-submissions JSON endpoint. It can resolve a ticker to CIK, fetch recent filing metadata, identify the latest 10-Q, 10-K, and 8-K, classify recent financing forms into shelf registrations, registration statements, ATM/offering signals, and flag structural-risk hints such as reverse splits, going-concern language, and listing-compliance issues.
 
 The SEC layer also uses the SEC company-facts XBRL endpoint for a first-pass cash runway estimate. It pulls latest reported cash and the latest operating cash-flow duration fact, estimates monthly burn when operating cash flow is negative, and calculates runway months when enough data is available.
 
@@ -124,7 +124,20 @@ The default watchlist lives at `biotech-risk-scout/watchlists/biotech-watchlist.
 
 The scanner prints rank, ticker, score, catalyst, days, runway, dilution risk, evidence quality, trial count, main reason, and main risk.
 
-Exports include ticker, company name, score, reason, red flags, catalyst, days, trial counts, evidence quality, cash, burn, runway, dilution risk, financing flags, and latest filing dates.
+Exports include ticker, company name, score, reason, red flags, catalyst, days, trial counts, evidence quality, cash, burn, runway, dilution risk, financing-category flags, structural red flags, financing-form counts, and latest filing dates.
+
+## SEC Financing Categories
+
+Recent filings are separated into clearer buckets:
+
+```txt
+shelf registration: S-3, S-3/A, S-3ASR, S-3ASR/A
+registration statement: S-1, S-1/A, POS AM
+ATM/offering: 424B2, 424B3, 424B5, FWP, or ATM/sales-agreement keywords
+structural red flags: reverse split, going concern, delisting/listing non-compliance keywords
+```
+
+These are metadata/keyword heuristics from recent SEC filing rows. They are triage flags, not final conclusions; serious diligence still requires opening and reading the actual filing.
 
 ## Tests
 
@@ -134,7 +147,7 @@ Run offline unit tests with:
 python -m pytest -q biotech-risk-scout/tests
 ```
 
-The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, snapshot comparison, markdown alert reports, daily-scan alert artifact helpers, score explanation formatting, and ClinicalTrials.gov sponsor fallback without depending on live SEC requests.
+The current tests validate the first-pass SEC company-facts cash runway calculation, SEC financing/structural flag classification, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, snapshot comparison, markdown alert reports, daily-scan alert artifact helpers, score explanation formatting, and ClinicalTrials.gov sponsor fallback without depending on live SEC requests.
 
 ## GitHub Actions
 
@@ -142,4 +155,4 @@ The smoke workflow compiles the project and runs all offline tests on pushes tou
 
 ## Next Engineering Step
 
-Add better SEC financing-form classification so shelf registrations, ATM programs, and offering prospectuses are separated instead of collapsed into one broad financing flag.
+Push SEC structural red flags into the scoring rubric so going-concern, reverse-split, and listing-compliance signals directly affect research-priority scores.
