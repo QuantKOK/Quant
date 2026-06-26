@@ -213,6 +213,9 @@ def format_score_explanation(row: dict[str, Any]) -> str:
         f"Shelf registration: {bool(data.get('has_shelf_registration'))}",
         f"Registration statement: {bool(data.get('has_registration_statement'))}",
         f"ATM/offering: {bool(data.get('has_atm_or_offering'))}",
+        f"Going concern: {bool(data.get('has_going_concern'))}",
+        f"Reverse split: {bool(data.get('has_reverse_split'))}",
+        f"Listing non-compliance: {bool(data.get('has_delisting_or_listing_noncompliance'))}",
         f"Structural red flags: {_format_list(data.get('structural_red_flags'))}",
     ]
     return "\n".join(lines)

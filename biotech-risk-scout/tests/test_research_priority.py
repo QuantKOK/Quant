@@ -66,3 +66,96 @@ def test_data_poor_name_scores_low():
 
     assert result.score < 25
     assert result.c6_red_flags < 0
+
+
+def test_going_concern_increases_red_flag_deduction():
+    base = compute_priority_score(
+        {
+            "cash_runway_months": 8,
+            "dilution_risk": "Moderate",
+            "trial_count": 2,
+            "active_trial_count": 1,
+            "evidence_quality": "Low",
+            "has_going_concern": False,
+        }
+    )
+    flagged = compute_priority_score(
+        {
+            "cash_runway_months": 8,
+            "dilution_risk": "Moderate",
+            "trial_count": 2,
+            "active_trial_count": 1,
+            "evidence_quality": "Low",
+            "has_going_concern": True,
+        }
+    )
+    assert flagged.c6_red_flags < base.c6_red_flags
+    assert "going concern" in flagged.red_flag_summary
+
+
+def test_reverse_split_appears_in_summary():
+    result = compute_priority_score(
+        {
+            "cash_runway_months": 10,
+            "dilution_risk": "Watch",
+            "trial_count": 1,
+            "active_trial_count": 1,
+            "evidence_quality": "Low",
+            "has_reverse_split": True,
+        }
+    )
+    assert "reverse split" in result.red_flag_summary
+
+
+def test_listing_noncompliance_appears_in_summary():
+    result = compute_priority_score(
+        {
+            "cash_runway_months": 10,
+            "dilution_risk": "Watch",
+            "trial_count": 1,
+            "active_trial_count": 1,
+            "evidence_quality": "Low",
+            "has_delisting_or_listing_noncompliance": True,
+        }
+    )
+    assert "listing non-compliance" in result.red_flag_summary
+
+
+def test_atm_offering_with_weak_runway_adds_warning():
+    no_flag = compute_priority_score(
+        {
+            "cash_runway_months": 4,
+            "dilution_risk": "Watch",
+            "trial_count": 1,
+            "active_trial_count": 1,
+            "evidence_quality": "Low",
+            "has_atm_or_offering": False,
+        }
+    )
+    with_flag = compute_priority_score(
+        {
+            "cash_runway_months": 4,
+            "dilution_risk": "Watch",
+            "trial_count": 1,
+            "active_trial_count": 1,
+            "evidence_quality": "Low",
+            "has_atm_or_offering": True,
+        }
+    )
+    assert with_flag.c6_red_flags < no_flag.c6_red_flags
+    assert "ATM/offering" in with_flag.red_flag_summary
+
+
+def test_atm_offering_with_strong_runway_no_penalty():
+    """ATM/offering flag should not penalize when runway is healthy (>=6mo)."""
+    result = compute_priority_score(
+        {
+            "cash_runway_months": 18,
+            "dilution_risk": "Low",
+            "trial_count": 3,
+            "active_trial_count": 2,
+            "evidence_quality": "Moderate",
+            "has_atm_or_offering": True,
+        }
+    )
+    assert "ATM/offering" not in result.red_flag_summary

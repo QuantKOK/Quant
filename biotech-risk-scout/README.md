@@ -155,4 +155,4 @@ The smoke workflow compiles the project and runs all offline tests on pushes tou
 
 ## Next Engineering Step
 
-Push SEC structural red flags into the scoring rubric so going-concern, reverse-split, and listing-compliance signals directly affect research-priority scores.
+Add direct SEC filing document fetch/parsing for 8-Ks, prospectuses, and registration statements so keyword flags can be validated against actual filing text.

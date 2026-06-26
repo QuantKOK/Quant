@@ -99,6 +99,13 @@ class ResearchCard:
                 "cash_fact": filings.get("cash_fact"),
                 "operating_cash_flow_fact": filings.get("operating_cash_flow_fact"),
                 "trials": trial_list,
+                "has_shelf_registration": bool(filings.get("has_shelf_registration")),
+                "has_registration_statement": bool(filings.get("has_registration_statement")),
+                "has_atm_or_offering": bool(filings.get("has_atm_or_offering")),
+                "has_reverse_split": bool(filings.get("has_reverse_split")),
+                "has_going_concern": bool(filings.get("has_going_concern")),
+                "has_delisting_or_listing_noncompliance": bool(filings.get("has_delisting_or_listing_noncompliance")),
+                "structural_red_flags": filings.get("structural_red_flags") or [],
             },
         )
 
@@ -147,6 +154,13 @@ class ResearchCard:
         lines.append(f"Latest 10-Q: {_format_filing(self.latest_10q)}")
         lines.append(f"Latest 10-K: {_format_filing(self.latest_10k)}")
         lines.append(f"Latest 8-K: {_format_filing(self.latest_8k)}")
+
+        financing_watch = _format_financing_watch(self.extra)
+        structural_flags = _format_structural_flags(self.extra)
+        if financing_watch:
+            lines.append(f"Financing watch: {financing_watch}")
+        if structural_flags:
+            lines.append(f"Structural risk flags: {structural_flags}")
 
         lines.extend(
             [
@@ -220,6 +234,33 @@ def _format_money(value: Optional[float]) -> str:
     if absolute >= 1_000:
         return f"{sign}${absolute / 1_000:.1f}K"
     return f"{sign}${absolute:,.0f}"
+
+
+def _format_financing_watch(extra: Dict[str, Any]) -> str:
+    """Return a triage-level financing-watch label from structural flag metadata."""
+    parts: list[str] = []
+    if extra.get("has_going_concern"):
+        parts.append("going concern language detected (requires filing review)")
+    if extra.get("has_atm_or_offering"):
+        parts.append("ATM/offering signal")
+    if extra.get("has_registration_statement"):
+        parts.append("registration statement")
+    if extra.get("has_shelf_registration"):
+        parts.append("shelf registration")
+    return "; ".join(parts) if parts else ""
+
+
+def _format_structural_flags(extra: Dict[str, Any]) -> str:
+    """Return a triage-level structural risk label from structural flag metadata."""
+    parts: list[str] = []
+    if extra.get("has_reverse_split"):
+        parts.append("reverse split")
+    if extra.get("has_delisting_or_listing_noncompliance"):
+        parts.append("listing non-compliance")
+    keyword_flags = extra.get("structural_red_flags") or []
+    if keyword_flags:
+        parts.extend(str(f) for f in keyword_flags)
+    return "; ".join(parts) if parts else ""
 
 
 def _format_filing(filing: Optional[Dict[str, Any]]) -> str:

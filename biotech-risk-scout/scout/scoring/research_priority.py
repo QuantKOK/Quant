@@ -204,6 +204,20 @@ def score_red_flags(data: dict[str, Any]) -> int:
     if evidence == "none" and days is None:
         deductions += 5
 
+    # SEC structural / financing flags
+    if data.get("has_going_concern"):
+        deductions += 10
+    if data.get("has_reverse_split"):
+        deductions += 7
+    if data.get("has_delisting_or_listing_noncompliance"):
+        deductions += 7
+    if data.get("has_atm_or_offering") and runway is not None and runway < 6:
+        deductions += 5
+    if data.get("has_registration_statement") and runway is not None and runway < 6:
+        deductions += 5
+    if data.get("has_shelf_registration") and runway is not None and runway < 6:
+        deductions += 3
+
     return -min(25, deductions)
 
 
@@ -276,6 +290,21 @@ def _derive_red_flag_summary(data: dict[str, Any], red_flag_score: int) -> str:
         flags.append("cash <=0")
     if (data.get("trial_count") or 0) == 0 and (data.get("active_trial_count") or 0) == 0:
         flags.append("no trials")
+
+    # SEC structural / financing labels
+    if data.get("has_going_concern"):
+        flags.append("going concern")
+    if data.get("has_reverse_split"):
+        flags.append("reverse split")
+    if data.get("has_delisting_or_listing_noncompliance"):
+        flags.append("listing non-compliance")
+    if data.get("has_atm_or_offering") and runway is not None and runway < 6:
+        flags.append("ATM/offering")
+    if data.get("has_registration_statement") and runway is not None and runway < 6:
+        flags.append("registration statement")
+    if data.get("has_shelf_registration") and runway is not None and runway < 6:
+        flags.append("shelf + weak runway")
+
     if not flags:
         flags.append("red flags")
     return ", ".join(flags)
