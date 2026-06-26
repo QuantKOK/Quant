@@ -12,18 +12,53 @@ SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 SEC_COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 DEFAULT_USER_AGENT = "BiotechRiskScout/0.1 contact@example.com"
 
-FINANCING_FORMS = {
-    "S-1",
-    "S-1/A",
+SHELF_REGISTRATION_FORMS = {
     "S-3",
     "S-3/A",
     "S-3ASR",
     "S-3ASR/A",
+}
+
+REGISTRATION_STATEMENT_FORMS = {
+    "S-1",
+    "S-1/A",
+    "POS AM",
+}
+
+OFFERING_PROSPECTUS_FORMS = {
     "424B2",
     "424B3",
     "424B5",
     "FWP",
-    "POS AM",
+}
+
+FINANCING_FORMS = SHELF_REGISTRATION_FORMS | REGISTRATION_STATEMENT_FORMS | OFFERING_PROSPECTUS_FORMS
+
+ATM_KEYWORDS = {
+    "at-the-market",
+    "at the market",
+    "atm offering",
+    "sales agreement",
+    "equity distribution agreement",
+    "market offering agreement",
+}
+
+REVERSE_SPLIT_KEYWORDS = {
+    "reverse stock split",
+    "reverse split",
+}
+
+GOING_CONCERN_KEYWORDS = {
+    "going concern",
+    "substantial doubt",
+}
+
+DELISTING_KEYWORDS = {
+    "delisting",
+    "minimum bid",
+    "nasdaq deficiency",
+    "non-compliance",
+    "noncompliance",
 }
 
 CASH_TAGS = [
@@ -140,9 +175,38 @@ def _recent_rows(recent: Dict[str, List[Any]], limit: int) -> List[Dict[str, Any
 def _latest_form(rows: Iterable[Dict[str, Any]], forms: Iterable[str]) -> Optional[Dict[str, Any]]:
     wanted = {form.upper() for form in forms}
     for row in rows:
-        if str(row.get("form", "")).upper() in wanted:
+        if _form(row) in wanted:
             return row
     return None
+
+
+def _form(row: Dict[str, Any]) -> str:
+    return str(row.get("form", "")).upper().strip()
+
+
+def _row_text(row: Dict[str, Any]) -> str:
+    pieces = [
+        row.get("form", ""),
+        row.get("primaryDocument", ""),
+        row.get("primaryDocDescription", ""),
+        row.get("description", ""),
+        row.get("items", ""),
+    ]
+    return " ".join(str(piece) for piece in pieces if piece).lower()
+
+
+def _row_has_keyword(row: Dict[str, Any], keywords: Iterable[str]) -> bool:
+    text = _row_text(row)
+    return any(keyword.lower() in text for keyword in keywords)
+
+
+def _rows_by_form(rows: Iterable[Dict[str, Any]], forms: Iterable[str]) -> List[Dict[str, Any]]:
+    wanted = {form.upper() for form in forms}
+    return [row for row in rows if _form(row) in wanted]
+
+
+def _rows_by_keyword(rows: Iterable[Dict[str, Any]], keywords: Iterable[str]) -> List[Dict[str, Any]]:
+    return [row for row in rows if _row_has_keyword(row, keywords)]
 
 
 def _summarize_row(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -162,8 +226,56 @@ def _summarize_rows(rows: Iterable[Dict[str, Any]], limit: int = 12) -> List[Dic
     return [_summarize_row(row) for row in list(rows)[:limit] if row]
 
 
-def _has_recent_financing_form(rows: Iterable[Dict[str, Any]]) -> bool:
-    return any(str(row.get("form", "")).upper() in FINANCING_FORMS for row in rows)
+def _count_forms(rows: Iterable[Dict[str, Any]]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for row in rows:
+        form = _form(row)
+        if form:
+            counts[form] = counts.get(form, 0) + 1
+    return counts
+
+
+def _classify_financing_and_structural_flags(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Classify recent SEC rows into financing and structural-risk buckets."""
+    shelf_rows = _rows_by_form(rows, SHELF_REGISTRATION_FORMS)
+    registration_rows = _rows_by_form(rows, REGISTRATION_STATEMENT_FORMS)
+    offering_rows = _rows_by_form(rows, OFFERING_PROSPECTUS_FORMS)
+    atm_rows = _rows_by_keyword(rows, ATM_KEYWORDS)
+    reverse_split_rows = _rows_by_keyword(rows, REVERSE_SPLIT_KEYWORDS)
+    going_concern_rows = _rows_by_keyword(rows, GOING_CONCERN_KEYWORDS)
+    delisting_rows = _rows_by_keyword(rows, DELISTING_KEYWORDS)
+
+    structural_red_flags: List[str] = []
+    if reverse_split_rows:
+        structural_red_flags.append("reverse_split")
+    if going_concern_rows:
+        structural_red_flags.append("going_concern")
+    if delisting_rows:
+        structural_red_flags.append("delisting_or_listing_noncompliance")
+
+    financing_rows = shelf_rows + registration_rows + offering_rows + atm_rows
+    has_atm_or_offering = bool(offering_rows or atm_rows)
+
+    return {
+        "has_shelf_registration": bool(shelf_rows),
+        "has_registration_statement": bool(registration_rows),
+        "has_atm_or_offering": has_atm_or_offering,
+        "has_recent_financing_form": bool(financing_rows),
+        "has_reverse_split": bool(reverse_split_rows),
+        "has_going_concern": bool(going_concern_rows),
+        "has_delisting_or_listing_noncompliance": bool(delisting_rows),
+        "structural_red_flags": structural_red_flags,
+        "financing_form_counts": _count_forms(financing_rows),
+        "financing_recent_filings": {
+            "shelf_registrations": _summarize_rows(shelf_rows),
+            "registration_statements": _summarize_rows(registration_rows),
+            "offering_prospectuses": _summarize_rows(offering_rows),
+            "atm_or_sales_agreement_filings": _summarize_rows(atm_rows),
+            "reverse_split_filings": _summarize_rows(reverse_split_rows),
+            "going_concern_filings": _summarize_rows(going_concern_rows),
+            "delisting_or_listing_noncompliance_filings": _summarize_rows(delisting_rows),
+        },
+    }
 
 
 def _parse_date(value: Optional[str]) -> Optional[datetime]:
@@ -287,7 +399,7 @@ def fetch_sec_filings(ticker: str, recent_limit: int = 40) -> Dict[str, Any]:
     submissions = company_submissions["submissions"]
     recent = submissions.get("filings", {}).get("recent", {})
     rows = _recent_rows(recent, recent_limit)
-    has_financing_form = _has_recent_financing_form(rows)
+    financing_flags = _classify_financing_and_structural_flags(rows)
 
     runway = {
         "cash": None,
@@ -328,8 +440,17 @@ def fetch_sec_filings(ticker: str, recent_limit: int = 40) -> Dict[str, Any]:
         "latest_10q": _summarize_row(_latest_form(rows, {"10-Q", "10-Q/A"})),
         "latest_10k": _summarize_row(_latest_form(rows, {"10-K", "10-K/A"})),
         "latest_8k": _summarize_row(_latest_form(rows, {"8-K", "8-K/A"})),
-        "has_shelf": has_financing_form,
-        "has_recent_financing_form": has_financing_form,
+        "has_shelf": financing_flags["has_shelf_registration"],
+        "has_recent_financing_form": financing_flags["has_recent_financing_form"],
+        "has_shelf_registration": financing_flags["has_shelf_registration"],
+        "has_registration_statement": financing_flags["has_registration_statement"],
+        "has_atm_or_offering": financing_flags["has_atm_or_offering"],
+        "has_reverse_split": financing_flags["has_reverse_split"],
+        "has_going_concern": financing_flags["has_going_concern"],
+        "has_delisting_or_listing_noncompliance": financing_flags["has_delisting_or_listing_noncompliance"],
+        "structural_red_flags": financing_flags["structural_red_flags"],
+        "financing_form_counts": financing_flags["financing_form_counts"],
+        "financing_recent_filings": financing_flags["financing_recent_filings"],
         "cash": runway.get("cash"),
         "operating_cash_flow": runway.get("operating_cash_flow"),
         "monthly_burn": runway.get("monthly_burn"),
