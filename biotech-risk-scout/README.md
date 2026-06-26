@@ -139,6 +139,22 @@ structural red flags: reverse split, going concern, delisting/listing non-compli
 
 These are metadata/keyword heuristics from recent SEC filing rows. They are triage flags, not final conclusions; serious diligence still requires opening and reading the actual filing.
 
+## SEC Filing URLs
+
+All summarized filing objects (`recent_filings`, `latest_10q`, `latest_10k`, `latest_8k`, and all `financing_recent_filings` sub-lists) now include direct SEC EDGAR links when CIK and accession data are available:
+
+* `filing_index_url` — the SEC EDGAR filing index page (lists all documents in the filing)
+* `primary_document_url` — direct link to the primary filing document (HTM/HTML)
+
+These URLs can be opened manually in a browser to read the actual filing text without additional tooling.
+
+## Optional Filing-Document Text Fetch
+
+Two optional helpers exist in `scout/ingest/sec_filings.py` for ad-hoc validation:
+
+* `fetch_filing_document_text(url)` — fetches and lightly HTML-strips a filing document from a `primary_document_url`. **Not called during normal scans** to avoid SEC rate-limit impact and performance regression.
+* `scan_filing_text_flags(text)` — pure offline function that scans filing text for going-concern, reverse-split, ATM/offering, and listing non-compliance signals. Can be called on any text string without network access.
+
 ## Tests
 
 Run offline unit tests with:
@@ -155,4 +171,4 @@ The smoke workflow compiles the project and runs all offline tests on pushes tou
 
 ## Next Engineering Step
 
-Add direct SEC filing document fetch/parsing for 8-Ks, prospectuses, and registration statements so keyword flags can be validated against actual filing text.
+Wire selected filing-text validation into alert reports for only the highest-risk financing/structural flags.

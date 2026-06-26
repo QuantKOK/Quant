@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 SEC_TICKER_CIK_URL = "https://www.sec.gov/files/company_tickers.json"
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 SEC_COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+SEC_ARCHIVES_BASE = "https://www.sec.gov/Archives/edgar/data"
 DEFAULT_USER_AGENT = "BiotechRiskScout/0.1 contact@example.com"
 
 SHELF_REGISTRATION_FORMS = {
@@ -77,6 +78,82 @@ class SecClientError(RuntimeError):
 
 def _get_user_agent() -> str:
     return os.getenv("SEC_USER_AGENT", DEFAULT_USER_AGENT)
+
+
+# ---------------------------------------------------------------------------
+# SEC filing URL construction
+# ---------------------------------------------------------------------------
+
+def _accession_no_dashes(accession_number: str) -> str:
+    """Return accession number with dashes removed (SEC archive path segment)."""
+    return accession_number.replace("-", "")
+
+
+def build_filing_index_url(cik: int, accession_number: str) -> str:
+    """Return the SEC EDGAR filing index HTML URL for a given CIK and accession."""
+    padded = cik_to_padded(cik)
+    no_dashes = _accession_no_dashes(accession_number)
+    return f"{SEC_ARCHIVES_BASE}/{padded}/{no_dashes}/{accession_number}-index.html"
+
+
+def build_primary_document_url(cik: int, accession_number: str, primary_document: str) -> str:
+    """Return the direct URL for the primary filing document."""
+    padded = cik_to_padded(cik)
+    no_dashes = _accession_no_dashes(accession_number)
+    return f"{SEC_ARCHIVES_BASE}/{padded}/{no_dashes}/{primary_document}"
+
+
+# ---------------------------------------------------------------------------
+# Optional filing-document fetch and keyword scan
+# (not used in normal scans to avoid performance and rate-limit impact)
+# ---------------------------------------------------------------------------
+
+def fetch_filing_document_text(url: str) -> str:
+    """Fetch the raw text of an SEC filing document, stripping basic HTML tags.
+
+    This is an optional helper for ad-hoc validation of keyword flags against
+    actual filing text. It is NOT called during normal scans. Use it manually
+    or in targeted alert-report validation flows.
+    """
+    import re
+    request = Request(
+        url,
+        headers={
+            "User-Agent": _get_user_agent(),
+            "Accept": "text/html,application/xhtml+xml,text/plain",
+        },
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+    except HTTPError as exc:
+        raise SecClientError(f"SEC document fetch failed with HTTP {exc.code}: {url}") from exc
+    except URLError as exc:
+        raise SecClientError(f"SEC document fetch failed: {url}; {exc.reason}") from exc
+
+    # Strip HTML tags and collapse whitespace for keyword scanning.
+    text = re.sub(r"<[^>]+>", " ", raw)
+    text = re.sub(r"[ \t]+", " ", text)
+    return text
+
+
+def scan_filing_text_flags(text: str) -> Dict[str, bool]:
+    """Scan filing document text for financing and structural keyword signals.
+
+    Returns a dict of boolean flags. This is a pure function — offline-testable
+    with no network calls. Treat results as heuristic triage, not facts.
+    """
+    lower = text.lower()
+
+    def _any(keywords: Iterable[str]) -> bool:
+        return any(kw in lower for kw in keywords)
+
+    return {
+        "has_going_concern": _any(GOING_CONCERN_KEYWORDS),
+        "has_reverse_split": _any(REVERSE_SPLIT_KEYWORDS),
+        "has_atm_or_offering": _any(ATM_KEYWORDS),
+        "has_delisting_or_listing_noncompliance": _any(DELISTING_KEYWORDS),
+    }
 
 
 def _fetch_json(url: str) -> Dict[str, Any]:
@@ -209,21 +286,28 @@ def _rows_by_keyword(rows: Iterable[Dict[str, Any]], keywords: Iterable[str]) ->
     return [row for row in rows if _row_has_keyword(row, keywords)]
 
 
-def _summarize_row(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _summarize_row(row: Optional[Dict[str, Any]], cik: Optional[int] = None) -> Optional[Dict[str, Any]]:
     if not row:
         return None
-    return {
+    accession = row.get("accessionNumber")
+    primary_doc = row.get("primaryDocument")
+    summary: Dict[str, Any] = {
         "form": row.get("form"),
         "filing_date": row.get("filingDate"),
         "report_date": row.get("reportDate"),
-        "accession_number": row.get("accessionNumber"),
-        "primary_document": row.get("primaryDocument"),
+        "accession_number": accession,
+        "primary_document": primary_doc,
         "description": row.get("primaryDocDescription"),
     }
+    if cik and accession:
+        summary["filing_index_url"] = build_filing_index_url(cik, accession)
+        if primary_doc:
+            summary["primary_document_url"] = build_primary_document_url(cik, accession, primary_doc)
+    return summary
 
 
-def _summarize_rows(rows: Iterable[Dict[str, Any]], limit: int = 12) -> List[Dict[str, Any]]:
-    return [_summarize_row(row) for row in list(rows)[:limit] if row]
+def _summarize_rows(rows: Iterable[Dict[str, Any]], limit: int = 12, cik: Optional[int] = None) -> List[Dict[str, Any]]:
+    return [_summarize_row(row, cik=cik) for row in list(rows)[:limit] if row]
 
 
 def _count_forms(rows: Iterable[Dict[str, Any]]) -> Dict[str, int]:
@@ -235,7 +319,7 @@ def _count_forms(rows: Iterable[Dict[str, Any]]) -> Dict[str, int]:
     return counts
 
 
-def _classify_financing_and_structural_flags(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _classify_financing_and_structural_flags(rows: List[Dict[str, Any]], cik: Optional[int] = None) -> Dict[str, Any]:
     """Classify recent SEC rows into financing and structural-risk buckets."""
     shelf_rows = _rows_by_form(rows, SHELF_REGISTRATION_FORMS)
     registration_rows = _rows_by_form(rows, REGISTRATION_STATEMENT_FORMS)
@@ -267,13 +351,13 @@ def _classify_financing_and_structural_flags(rows: List[Dict[str, Any]]) -> Dict
         "structural_red_flags": structural_red_flags,
         "financing_form_counts": _count_forms(financing_rows),
         "financing_recent_filings": {
-            "shelf_registrations": _summarize_rows(shelf_rows),
-            "registration_statements": _summarize_rows(registration_rows),
-            "offering_prospectuses": _summarize_rows(offering_rows),
-            "atm_or_sales_agreement_filings": _summarize_rows(atm_rows),
-            "reverse_split_filings": _summarize_rows(reverse_split_rows),
-            "going_concern_filings": _summarize_rows(going_concern_rows),
-            "delisting_or_listing_noncompliance_filings": _summarize_rows(delisting_rows),
+            "shelf_registrations": _summarize_rows(shelf_rows, cik=cik),
+            "registration_statements": _summarize_rows(registration_rows, cik=cik),
+            "offering_prospectuses": _summarize_rows(offering_rows, cik=cik),
+            "atm_or_sales_agreement_filings": _summarize_rows(atm_rows, cik=cik),
+            "reverse_split_filings": _summarize_rows(reverse_split_rows, cik=cik),
+            "going_concern_filings": _summarize_rows(going_concern_rows, cik=cik),
+            "delisting_or_listing_noncompliance_filings": _summarize_rows(delisting_rows, cik=cik),
         },
     }
 
@@ -399,7 +483,8 @@ def fetch_sec_filings(ticker: str, recent_limit: int = 40) -> Dict[str, Any]:
     submissions = company_submissions["submissions"]
     recent = submissions.get("filings", {}).get("recent", {})
     rows = _recent_rows(recent, recent_limit)
-    financing_flags = _classify_financing_and_structural_flags(rows)
+    cik = company_submissions["cik"]
+    financing_flags = _classify_financing_and_structural_flags(rows, cik=cik)
 
     runway = {
         "cash": None,
@@ -436,10 +521,10 @@ def fetch_sec_filings(ticker: str, recent_limit: int = 40) -> Dict[str, Any]:
         "fiscal_year_end": submissions.get("fiscalYearEnd"),
         "source_url": company_submissions["source_url"],
         "company_facts_error": company_facts_error,
-        "recent_filings": _summarize_rows(rows),
-        "latest_10q": _summarize_row(_latest_form(rows, {"10-Q", "10-Q/A"})),
-        "latest_10k": _summarize_row(_latest_form(rows, {"10-K", "10-K/A"})),
-        "latest_8k": _summarize_row(_latest_form(rows, {"8-K", "8-K/A"})),
+        "recent_filings": _summarize_rows(rows, cik=cik),
+        "latest_10q": _summarize_row(_latest_form(rows, {"10-Q", "10-Q/A"}), cik=cik),
+        "latest_10k": _summarize_row(_latest_form(rows, {"10-K", "10-K/A"}), cik=cik),
+        "latest_8k": _summarize_row(_latest_form(rows, {"8-K", "8-K/A"}), cik=cik),
         "has_shelf": financing_flags["has_shelf_registration"],
         "has_recent_financing_form": financing_flags["has_recent_financing_form"],
         "has_shelf_registration": financing_flags["has_shelf_registration"],
