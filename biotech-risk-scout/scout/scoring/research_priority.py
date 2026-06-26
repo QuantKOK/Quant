@@ -1,7 +1,7 @@
 """Research-priority scoring for multi-ticker biotech scans.
 
-The priority score ranks which tickers deserve human diligence first. It is not
-an investment recommendation, target price, or buy/sell/hold signal.
+The priority score ranks which tickers deserve human diligence first. It is a
+research-prioritization score, not an instruction to trade.
 """
 
 from __future__ import annotations
@@ -190,6 +190,15 @@ def score_red_flags(data: dict[str, Any]) -> int:
     active = data.get("active_trial_count") or 0
     evidence = (data.get("evidence_quality") or "").lower()
     days = data.get("days_until_event")
+    has_weak_runway = runway is not None and runway < 6
+    has_specific_financing_flag = any(
+        bool(data.get(flag))
+        for flag in (
+            "has_atm_or_offering",
+            "has_registration_statement",
+            "has_shelf_registration",
+        )
+    )
 
     if runway is not None and runway < 3:
         deductions += 15
@@ -197,25 +206,24 @@ def score_red_flags(data: dict[str, Any]) -> int:
         deductions += 10
     if cash is not None and cash <= 0:
         deductions += 12
-    if has_financing and runway is not None and runway < 6:
+    if has_financing and has_weak_runway and not has_specific_financing_flag:
         deductions += 5
     if trials == 0 and active == 0:
         deductions += 5
     if evidence == "none" and days is None:
         deductions += 5
 
-    # SEC structural / financing flags
     if data.get("has_going_concern"):
         deductions += 10
     if data.get("has_reverse_split"):
         deductions += 7
     if data.get("has_delisting_or_listing_noncompliance"):
         deductions += 7
-    if data.get("has_atm_or_offering") and runway is not None and runway < 6:
+    if data.get("has_atm_or_offering") and has_weak_runway:
         deductions += 5
-    if data.get("has_registration_statement") and runway is not None and runway < 6:
+    if data.get("has_registration_statement") and has_weak_runway:
         deductions += 5
-    if data.get("has_shelf_registration") and runway is not None and runway < 6:
+    if data.get("has_shelf_registration") and has_weak_runway:
         deductions += 3
 
     return -min(25, deductions)
@@ -291,7 +299,6 @@ def _derive_red_flag_summary(data: dict[str, Any], red_flag_score: int) -> str:
     if (data.get("trial_count") or 0) == 0 and (data.get("active_trial_count") or 0) == 0:
         flags.append("no trials")
 
-    # SEC structural / financing labels
     if data.get("has_going_concern"):
         flags.append("going concern")
     if data.get("has_reverse_split"):
