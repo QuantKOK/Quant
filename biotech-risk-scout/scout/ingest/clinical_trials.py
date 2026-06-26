@@ -3,12 +3,13 @@ ClinicalTrials.gov API v2 client.
 
 Public surface
 --------------
-    fetch_clinical_trials(ticker: str) -> dict
+    fetch_clinical_trials(ticker: str, fallback_sponsor_name: str | None = None) -> dict
 
 The function accepts either a ticker symbol such as "MRNA" or a plain company /
 sponsor name such as "Moderna". It searches ClinicalTrials.gov by sponsor,
 then enriches the result with upcoming-catalyst metadata compatible with
-ResearchCard.from_sources().
+ResearchCard.from_sources(). If the ticker is not in the manual sponsor map,
+it can fall back to an SEC company name supplied by the SEC ingestion layer.
 
 API reference
 -------------
@@ -99,6 +100,29 @@ _TICKER_TO_SPONSOR: dict[str, str] = {
     "PRME": "Prime Medicine",
     "VERV": "Verve Therapeutics",
 }
+
+_COMPANY_SUFFIXES = (
+    "incorporated",
+    "inc",
+    "corp",
+    "corporation",
+    "co",
+    "company",
+    "ltd",
+    "limited",
+    "plc",
+    "nv",
+    "sa",
+    "ag",
+    "se",
+    "holdings",
+    "holding",
+    "therapeutics",
+    "pharmaceuticals",
+    "biopharma",
+    "biotherapeutics",
+    "biosciences",
+)
 
 _ACTIVE_STATUSES = {
     "RECRUITING",
@@ -224,19 +248,49 @@ def _score_evidence_quality(trials: list[dict[str, Any]]) -> str:
     return "Low"
 
 
+def normalize_company_name(company_name: str | None) -> str:
+    """Normalize SEC company names for sponsor fallback searches."""
+    if not company_name:
+        return ""
+    name = company_name.strip()
+    for suffix in ("/DE", "/DE/", "/MA", "/NY", "/CA"):
+        if name.upper().endswith(suffix):
+            name = name[: -len(suffix)].strip()
+    name = name.replace(".", " ").replace(",", " ").replace("/", " ")
+    words = [word for word in name.split() if word]
+    while words and words[-1].lower() in _COMPANY_SUFFIXES:
+        words.pop()
+    return " ".join(words).strip() or company_name.strip()
+
+
+def _resolve_sponsor_query(ticker_or_name: str, fallback_sponsor_name: str | None = None) -> tuple[str, str]:
+    """Resolve the sponsor query and explain where it came from."""
+    raw = ticker_or_name.strip()
+    upper = raw.upper()
+    if upper in _TICKER_TO_SPONSOR:
+        return _TICKER_TO_SPONSOR[upper], "manual_ticker_map"
+
+    fallback = normalize_company_name(fallback_sponsor_name)
+    if fallback:
+        return fallback, "sec_company_name_fallback"
+
+    return raw, "input"
+
+
 def _resolve_sponsor_name(ticker: str) -> str:
-    """Map a ticker to a ClinicalTrials.gov sponsor name if known, else return as-is."""
-    upper = ticker.strip().upper()
-    return _TICKER_TO_SPONSOR.get(upper, ticker.strip())
+    """Backward-compatible sponsor-name resolver."""
+    sponsor_query, _ = _resolve_sponsor_query(ticker)
+    return sponsor_query
 
 
-def fetch_clinical_trials(ticker: str) -> dict[str, Any]:
+def fetch_clinical_trials(ticker: str, fallback_sponsor_name: str | None = None) -> dict[str, Any]:
     """Fetch clinical trial data for a ticker or sponsor/company name."""
-    sponsor_name = _resolve_sponsor_name(ticker)
+    sponsor_name, sponsor_query_source = _resolve_sponsor_query(ticker, fallback_sponsor_name)
 
     empty_result: dict[str, Any] = {
         "ticker": ticker,
         "sponsor_query": sponsor_name,
+        "sponsor_query_source": sponsor_query_source,
         "upcoming_catalyst": "No trials found",
         "days_until_event": None,
         "evidence_quality": "None",
@@ -295,7 +349,10 @@ def fetch_clinical_trials(ticker: str) -> dict[str, Any]:
         logger.debug("Fetching page %d for sponsor '%s'", page, sponsor_name)
 
     if not raw_studies:
-        empty_result["notes"] = f"No trials found on ClinicalTrials.gov for sponsor '{sponsor_name}'."
+        empty_result["notes"] = (
+            f"No trials found on ClinicalTrials.gov for sponsor '{sponsor_name}' "
+            f"using {sponsor_query_source}."
+        )
         return empty_result
 
     trials: list[dict[str, Any]] = []
@@ -327,8 +384,8 @@ def fetch_clinical_trials(ticker: str) -> dict[str, Any]:
         status_counts[status] = status_counts.get(status, 0) + 1
     status_summary = "; ".join(f"{count} {status}" for status, count in sorted(status_counts.items()))
     notes = (
-        f"Retrieved {len(trials)} of {total_count} trials for sponsor '{sponsor_name}'. "
-        f"Status breakdown: {status_summary}."
+        f"Retrieved {len(trials)} of {total_count} trials for sponsor '{sponsor_name}' "
+        f"using {sponsor_query_source}. Status breakdown: {status_summary}."
     )
 
     for trial in trials:
@@ -338,6 +395,7 @@ def fetch_clinical_trials(ticker: str) -> dict[str, Any]:
     return {
         "ticker": ticker,
         "sponsor_query": sponsor_name,
+        "sponsor_query_source": sponsor_query_source,
         "upcoming_catalyst": upcoming_catalyst,
         "days_until_event": days_until_event,
         "evidence_quality": evidence_quality,
