@@ -48,7 +48,7 @@ EXPORT_COLUMNS = [
 def build_scan_row(ticker: str) -> dict[str, Any]:
     """Fetch sources, build a card, and score one ticker."""
     filings = fetch_sec_filings(ticker)
-    trials = fetch_clinical_trials(ticker)
+    trials = fetch_clinical_trials(ticker, fallback_sponsor_name=filings.get("company_name"))
     card = ResearchCard.from_sources(ticker=ticker, filings=filings, trials=trials)
 
     scorer_input = {
