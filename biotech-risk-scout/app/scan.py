@@ -133,6 +133,49 @@ def print_scan_table(rows: list[dict[str, Any]], min_score: int = 0) -> None:
         print(_format_row(values, widths))
 
 
+def print_score_explanations(rows: list[dict[str, Any]], min_score: int = 0) -> None:
+    """Print detailed score explanations for filtered rows."""
+    for row in _filter_rows(rows, min_score):
+        print()
+        print(format_score_explanation(row))
+
+
+def format_score_explanation(row: dict[str, Any]) -> str:
+    """Format a per-ticker score breakdown."""
+    priority: PriorityScore = row["priority"]
+    data = row.get("data", {})
+    lines = [
+        f"{row.get('ticker')} score: {priority.score}/100",
+        "",
+        "Component Breakdown",
+        "-------------------",
+        f"Catalyst urgency:       {priority.c1_catalyst_urgency:>3} / 30",
+        f"Evidence quality:       {priority.c2_evidence_quality:>3} / 20",
+        f"Financial viability:    {priority.c3_financial_viability:>3} / 20",
+        f"Dilution structure:     {priority.c4_dilution_structure:>3} / 15",
+        f"Data confidence:        {priority.c5_data_confidence:>3} / 10",
+        f"Red flags:              {priority.c6_red_flags:>3} / -25",
+        "",
+        f"Main reason: {priority.main_reason}",
+        f"Red flags: {priority.red_flag_summary}",
+        "",
+        "Inputs Used",
+        "-----------",
+        f"Company: {data.get('company_name') or '-'}",
+        f"Catalyst: {data.get('upcoming_catalyst') or '-'}",
+        f"Days until event: {_format_days(data.get('days_until_event'))}",
+        f"Trials: {data.get('active_trial_count') or 0} active / {data.get('trial_count') or 0} total",
+        f"Evidence quality: {data.get('evidence_quality') or '-'}",
+        f"Cash: {_format_money(data.get('cash'))}",
+        f"Monthly burn: {_format_money(data.get('monthly_burn'))}",
+        f"Runway: {_format_runway(data.get('cash_runway_months'))}",
+        f"Dilution risk: {data.get('dilution_risk') or '-'}",
+        f"Shelf: {bool(data.get('has_shelf'))}",
+        f"Recent financing form: {bool(data.get('has_recent_financing_form'))}",
+    ]
+    return "\n".join(lines)
+
+
 def export_rows_to_json(rows: list[dict[str, Any]], path: str, min_score: int = 0) -> None:
     """Write ranked scan rows to JSON."""
     payload = export_records(rows, min_score=min_score)
@@ -259,7 +302,28 @@ def _format_days(value: Any) -> str:
 def _format_runway(value: Any) -> str:
     if value is None:
         return "-"
-    return f"{value}mo"
+    try:
+        return f"{float(value):.1f}mo"
+    except (TypeError, ValueError):
+        return f"{value}mo"
+
+
+def _format_money(value: Any) -> str:
+    if value is None:
+        return "-"
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    abs_amount = abs(amount)
+    sign = "-" if amount < 0 else ""
+    if abs_amount >= 1_000_000_000:
+        return f"{sign}${abs_amount / 1_000_000_000:.1f}B"
+    if abs_amount >= 1_000_000:
+        return f"{sign}${abs_amount / 1_000_000:.1f}M"
+    if abs_amount >= 1_000:
+        return f"{sign}${abs_amount / 1_000:.1f}K"
+    return f"{sign}${abs_amount:.0f}"
 
 
 def _short_dilution(value: Any) -> str:
@@ -293,6 +357,7 @@ def main(argv=None) -> int:
     parser.add_argument("--compare-snapshots", nargs=2, metavar=("OLD", "NEW"), help="Compare two snapshot JSON files and exit")
     parser.add_argument("--compare-json", dest="compare_json_path", help="Optional path to write snapshot comparison JSON")
     parser.add_argument("--alert-report", dest="alert_report_path", help="Optional path to write a markdown alert report from snapshot comparison")
+    parser.add_argument("--explain", action="store_true", help="Print per-ticker score explanations after the scan table")
     parser.add_argument("--no-table", action="store_true", help="Do not print the table; useful for export-only runs")
     args = parser.parse_args(argv)
 
@@ -317,6 +382,8 @@ def main(argv=None) -> int:
     rows = scan_tickers(tickers)
     if not args.no_table:
         print_scan_table(rows, min_score=args.min_score)
+    if args.explain:
+        print_score_explanations(rows, min_score=args.min_score)
     if args.json_path:
         export_rows_to_json(rows, args.json_path, min_score=args.min_score)
     if args.csv_path:
