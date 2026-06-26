@@ -16,7 +16,7 @@ The scanner now ranks multiple tickers with a 0-100 research-priority score. The
 
 The scanner can export ranked results to CSV and JSON for saved watchlists, spreadsheet review, and future score-change tracking. It also supports watchlist files through `--tickers-file`, dated scan snapshots through `--snapshot-dir`, snapshot comparisons through `--compare-snapshots`, and markdown alert reports through `--alert-report`.
 
-A local daily-scan runner and weekday GitHub Actions schedule can run the default watchlist, save snapshots, generate alert reports when a prior snapshot exists, and upload snapshot artifacts.
+A local daily-scan runner and weekday GitHub Actions schedule can run the default watchlist, restore the previous cached snapshot, save a new snapshot cache, generate alert reports when a prior snapshot exists, and upload snapshot artifacts.
 
 The cash-runway logic is still a first-pass heuristic. It should be reviewed against actual filings before being used for serious diligence.
 
@@ -130,8 +130,8 @@ The current tests validate the first-pass SEC company-facts cash runway calculat
 
 ## GitHub Actions
 
-The smoke workflow compiles the project and runs all offline tests on pushes touching Biotech Risk Scout. It also supports manual runs and a weekday scheduled scan that uploads snapshot, CSV, JSON, comparison, and alert-report artifacts.
+The smoke workflow compiles the project and runs all offline tests on pushes touching Biotech Risk Scout. It also supports manual runs and a weekday scheduled scan that restores the previous `biotech-risk-scout/snapshots` cache, runs the daily scanner, saves the new cache, and uploads snapshot, CSV, JSON, comparison, and alert-report artifacts.
 
 ## Next Engineering Step
 
-Add persistent prior-snapshot retrieval for GitHub Actions so scheduled cloud runs can compare against the previous workflow artifact automatically instead of only comparing local persisted snapshots.
+Add score explanation output per ticker so the scanner can show exactly why a ticker received its score.
