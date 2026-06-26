@@ -15,7 +15,7 @@ from scout.reports.research_card import ResearchCard  # type: ignore
 def build_research_card(ticker: str) -> ResearchCard:
     """Construct a research card from available ingestion sources."""
     filing_data = fetch_sec_filings(ticker)
-    trial_data = fetch_clinical_trials(ticker)
+    trial_data = fetch_clinical_trials(ticker, fallback_sponsor_name=filing_data.get("company_name"))
 
     return ResearchCard.from_sources(
         ticker=ticker,
