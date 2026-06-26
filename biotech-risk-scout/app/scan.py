@@ -39,6 +39,14 @@ EXPORT_COLUMNS = [
     "dilution_risk",
     "has_shelf",
     "has_recent_financing_form",
+    "has_shelf_registration",
+    "has_registration_statement",
+    "has_atm_or_offering",
+    "has_reverse_split",
+    "has_going_concern",
+    "has_delisting_or_listing_noncompliance",
+    "structural_red_flags",
+    "financing_form_counts",
     "latest_10q_date",
     "latest_10k_date",
     "latest_8k_date",
@@ -66,6 +74,14 @@ def build_scan_row(ticker: str) -> dict[str, Any]:
         "dilution_risk": card.dilution_risk,
         "has_recent_financing_form": filings.get("has_recent_financing_form"),
         "has_shelf": filings.get("has_shelf"),
+        "has_shelf_registration": filings.get("has_shelf_registration"),
+        "has_registration_statement": filings.get("has_registration_statement"),
+        "has_atm_or_offering": filings.get("has_atm_or_offering"),
+        "has_reverse_split": filings.get("has_reverse_split"),
+        "has_going_concern": filings.get("has_going_concern"),
+        "has_delisting_or_listing_noncompliance": filings.get("has_delisting_or_listing_noncompliance"),
+        "structural_red_flags": filings.get("structural_red_flags", []),
+        "financing_form_counts": filings.get("financing_form_counts", {}),
         "latest_10q": card.latest_10q,
         "latest_10k": card.latest_10k,
         "latest_8k": card.latest_8k,
@@ -83,13 +99,11 @@ def scan_tickers(tickers: list[str], max_workers: int = 8) -> list[dict[str, Any
     The SEC CIK map is fetched once before the pool starts so all threads
     share the cached result without racing to populate it.
     """
-    # Warm the CIK map cache before spawning threads so every thread gets
-    # a cache hit instead of racing to fetch the same URL simultaneously.
     try:
         from scout.ingest.sec_filings import fetch_ticker_cik_map  # type: ignore
         fetch_ticker_cik_map()
     except Exception:  # noqa: BLE001
-        pass  # will fail per-ticker and be handled in build_scan_row
+        pass
 
     rows: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=min(max_workers, len(tickers))) as pool:
@@ -196,8 +210,10 @@ def format_score_explanation(row: dict[str, Any]) -> str:
         f"Monthly burn: {_format_money(data.get('monthly_burn'))}",
         f"Runway: {_format_runway(data.get('cash_runway_months'))}",
         f"Dilution risk: {data.get('dilution_risk') or '-'}",
-        f"Shelf: {bool(data.get('has_shelf'))}",
-        f"Recent financing form: {bool(data.get('has_recent_financing_form'))}",
+        f"Shelf registration: {bool(data.get('has_shelf_registration'))}",
+        f"Registration statement: {bool(data.get('has_registration_statement'))}",
+        f"ATM/offering: {bool(data.get('has_atm_or_offering'))}",
+        f"Structural red flags: {_format_list(data.get('structural_red_flags'))}",
     ]
     return "\n".join(lines)
 
@@ -295,6 +311,14 @@ def _export_record(rank: int, row: dict[str, Any]) -> dict[str, Any]:
         "dilution_risk": data.get("dilution_risk"),
         "has_shelf": data.get("has_shelf"),
         "has_recent_financing_form": data.get("has_recent_financing_form"),
+        "has_shelf_registration": data.get("has_shelf_registration"),
+        "has_registration_statement": data.get("has_registration_statement"),
+        "has_atm_or_offering": data.get("has_atm_or_offering"),
+        "has_reverse_split": data.get("has_reverse_split"),
+        "has_going_concern": data.get("has_going_concern"),
+        "has_delisting_or_listing_noncompliance": data.get("has_delisting_or_listing_noncompliance"),
+        "structural_red_flags": _format_list(data.get("structural_red_flags")),
+        "financing_form_counts": json.dumps(data.get("financing_form_counts", {}), sort_keys=True),
         "latest_10q_date": _filing_date(data.get("latest_10q")),
         "latest_10k_date": _filing_date(data.get("latest_10k")),
         "latest_8k_date": _filing_date(data.get("latest_8k")),
@@ -350,6 +374,14 @@ def _format_money(value: Any) -> str:
     if abs_amount >= 1_000:
         return f"{sign}${abs_amount / 1_000:.1f}K"
     return f"{sign}${abs_amount:.0f}"
+
+
+def _format_list(value: Any) -> str:
+    if not value:
+        return "-"
+    if isinstance(value, list):
+        return ", ".join(str(item) for item in value) if value else "-"
+    return str(value)
 
 
 def _short_dilution(value: Any) -> str:
