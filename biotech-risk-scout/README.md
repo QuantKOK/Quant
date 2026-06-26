@@ -14,7 +14,7 @@ The research card output is now structured like a diligence card, with separate 
 
 The scanner now ranks multiple tickers with a 0-100 research-priority score. The score is a diligence-queue tool only, not an investment recommendation.
 
-The scanner can export ranked results to CSV and JSON for saved watchlists, spreadsheet review, and future score-change tracking. It also supports watchlist files through `--tickers-file`, dated scan snapshots through `--snapshot-dir`, snapshot comparisons through `--compare-snapshots`, and markdown alert reports through `--alert-report`.
+The scanner can export ranked results to CSV and JSON for saved watchlists, spreadsheet review, and future score-change tracking. It also supports watchlist files through `--tickers-file`, dated scan snapshots through `--snapshot-dir`, snapshot comparisons through `--compare-snapshots`, markdown alert reports through `--alert-report`, and per-ticker score explanations through `--explain`.
 
 A local daily-scan runner and weekday GitHub Actions schedule can run the default watchlist, restore the previous cached snapshot, save a new snapshot cache, generate alert reports when a prior snapshot exists, and upload snapshot artifacts.
 
@@ -64,6 +64,14 @@ Scan and rank multiple tickers:
 ```bash
 python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP
 ```
+
+Print score explanations after scanning:
+
+```bash
+python biotech-risk-scout/app/scan.py MRNA VKTX SAVA --explain
+```
+
+The explanation shows each ticker's 0-100 score, component breakdown, main reason, red flags, and key inputs used.
 
 Scan from a watchlist file:
 
@@ -126,7 +134,7 @@ Run offline unit tests with:
 python -m pytest -q biotech-risk-scout/tests
 ```
 
-The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, snapshot comparison, markdown alert reports, and daily-scan alert artifact helpers without depending on live SEC requests.
+The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, snapshot comparison, markdown alert reports, daily-scan alert artifact helpers, and score explanation formatting without depending on live SEC requests.
 
 ## GitHub Actions
 
@@ -134,4 +142,4 @@ The smoke workflow compiles the project and runs all offline tests on pushes tou
 
 ## Next Engineering Step
 
-Add score explanation output per ticker so the scanner can show exactly why a ticker received its score.
+Add sponsor fallback for ClinicalTrials.gov so the scanner can search by SEC company name when a ticker is not in the manual sponsor map.
