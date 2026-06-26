@@ -43,10 +43,25 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Restore previous scan snapshot
+        uses: actions/cache/restore@v4
+        with:
+          path: biotech-risk-scout/snapshots
+          key: biotech-risk-scout-snapshots-${{ github.run_id }}
+          restore-keys: |
+            biotech-risk-scout-snapshots-
+
       - name: Run daily scan
         env:
-          SEC_USER_AGENT: BiotechRiskScout kaiveonday@gmail.com
+          SEC_USER_AGENT: BiotechRiskScout
         run: python biotech-risk-scout/scripts/run_daily_scan.py --no-table --output-dir biotech-risk-scout/snapshots
+
+      - name: Save latest scan snapshot cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: biotech-risk-scout/snapshots
+          key: biotech-risk-scout-snapshots-${{ github.run_id }}
 
       - name: Upload scan artifacts
         uses: actions/upload-artifact@v4
