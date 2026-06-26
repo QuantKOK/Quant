@@ -8,6 +8,7 @@ import csv
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -75,21 +76,46 @@ def build_scan_row(ticker: str) -> dict[str, Any]:
     return {"ticker": card.ticker, "card": card, "priority": priority, "data": scorer_input}
 
 
-def scan_tickers(tickers: list[str]) -> list[dict[str, Any]]:
-    """Scan tickers and return ranked rows."""
+def scan_tickers(tickers: list[str], max_workers: int = 8) -> list[dict[str, Any]]:
+    """Scan tickers concurrently and return ranked rows.
+
+    Each ticker fetches SEC and ClinicalTrials.gov data in parallel threads.
+    The SEC CIK map is fetched once before the pool starts so all threads
+    share the cached result without racing to populate it.
+    """
+    # Warm the CIK map cache before spawning threads so every thread gets
+    # a cache hit instead of racing to fetch the same URL simultaneously.
+    try:
+        from scout.ingest.sec_filings import fetch_ticker_cik_map  # type: ignore
+        fetch_ticker_cik_map()
+    except Exception:  # noqa: BLE001
+        pass  # will fail per-ticker and be handled in build_scan_row
+
     rows: list[dict[str, Any]] = []
-    for ticker in tickers:
-        try:
-            rows.append(build_scan_row(ticker.upper()))
-        except SecClientError as exc:
-            rows.append(
-                {
-                    "ticker": ticker.upper(),
-                    "card": None,
-                    "priority": PriorityScore(0, "SEC ingestion failed", str(exc), 0, 0, 0, 0, 0, -25),
-                    "data": {"upcoming_catalyst": "Error", "dilution_risk": "?", "evidence_quality": "?"},
-                }
-            )
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(tickers))) as pool:
+        future_to_ticker = {pool.submit(build_scan_row, ticker): ticker for ticker in tickers}
+        for future in as_completed(future_to_ticker):
+            ticker = future_to_ticker[future]
+            try:
+                rows.append(future.result())
+            except SecClientError as exc:
+                rows.append(
+                    {
+                        "ticker": ticker,
+                        "card": None,
+                        "priority": PriorityScore(0, "SEC ingestion failed", str(exc), 0, 0, 0, 0, 0, -25),
+                        "data": {"upcoming_catalyst": "Error", "dilution_risk": "?", "evidence_quality": "?"},
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001
+                rows.append(
+                    {
+                        "ticker": ticker,
+                        "card": None,
+                        "priority": PriorityScore(0, "Fetch error", str(exc), 0, 0, 0, 0, 0, -25),
+                        "data": {"upcoming_catalyst": "Error", "dilution_risk": "?", "evidence_quality": "?"},
+                    }
+                )
     return sorted(rows, key=lambda row: (-row["priority"].score, _sort_days(row)))
 
 
@@ -359,6 +385,7 @@ def main(argv=None) -> int:
     parser.add_argument("--alert-report", dest="alert_report_path", help="Optional path to write a markdown alert report from snapshot comparison")
     parser.add_argument("--explain", action="store_true", help="Print per-ticker score explanations after the scan table")
     parser.add_argument("--no-table", action="store_true", help="Do not print the table; useful for export-only runs")
+    parser.add_argument("--max-workers", type=int, default=8, help="Max concurrent ticker fetches (default: 8)")
     args = parser.parse_args(argv)
 
     if args.compare_snapshots:
@@ -379,7 +406,7 @@ def main(argv=None) -> int:
     if not tickers:
         parser.error("provide at least one ticker, --tickers-file, or --compare-snapshots OLD NEW")
 
-    rows = scan_tickers(tickers)
+    rows = scan_tickers(tickers, max_workers=args.max_workers)
     if not args.no_table:
         print_scan_table(rows, min_score=args.min_score)
     if args.explain:

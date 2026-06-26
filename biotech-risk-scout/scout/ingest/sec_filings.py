@@ -1,7 +1,6 @@
 """SEC EDGAR company-submissions and company-facts ingestion."""
 
 from datetime import datetime
-from functools import lru_cache
 import json
 import os
 from typing import Any, Dict, Iterable, List, Optional
@@ -65,8 +64,19 @@ def _fetch_json(url: str) -> Dict[str, Any]:
         raise SecClientError(f"SEC returned invalid JSON: {url}") from exc
 
 
-@lru_cache(maxsize=1)
+_TICKER_CIK_MAP_CACHE: Optional[Dict[str, Dict[str, Any]]] = None
+
+
 def fetch_ticker_cik_map() -> Dict[str, Dict[str, Any]]:
+    """Fetch and cache the SEC ticker-to-CIK map once per process.
+
+    lru_cache(maxsize=1) would also work but makes the cache hard to clear in
+    tests and provides no benefit over a module-level variable here.
+    """
+    global _TICKER_CIK_MAP_CACHE
+    if _TICKER_CIK_MAP_CACHE is not None:
+        return _TICKER_CIK_MAP_CACHE
+
     raw = _fetch_json(SEC_TICKER_CIK_URL)
     mapping: Dict[str, Dict[str, Any]] = {}
 
@@ -77,7 +87,8 @@ def fetch_ticker_cik_map() -> Dict[str, Dict[str, Any]]:
         if ticker and cik is not None:
             mapping[ticker] = {"ticker": ticker, "cik": int(cik), "title": title}
 
-    return mapping
+    _TICKER_CIK_MAP_CACHE = mapping
+    return _TICKER_CIK_MAP_CACHE
 
 
 def lookup_company(ticker: str) -> Dict[str, Any]:

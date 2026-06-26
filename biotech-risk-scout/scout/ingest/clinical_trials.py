@@ -253,31 +253,46 @@ def fetch_clinical_trials(ticker: str) -> dict[str, Any]:
         "sort": "LastUpdatePostDate:desc",
     }
 
-    try:
-        data = _get_json(_BASE_URL, params)
-    except urllib.error.HTTPError as exc:
-        msg = f"ClinicalTrials.gov HTTP {exc.code}: {exc.reason}"
-        logger.warning(msg)
-        empty_result["notes"] = msg
-        return empty_result
-    except urllib.error.URLError as exc:
-        msg = f"ClinicalTrials.gov network error: {exc.reason}"
-        logger.warning(msg)
-        empty_result["notes"] = msg
-        return empty_result
-    except json.JSONDecodeError as exc:
-        msg = f"ClinicalTrials.gov returned invalid JSON: {exc}"
-        logger.warning(msg)
-        empty_result["notes"] = msg
-        return empty_result
-    except Exception as exc:  # noqa: BLE001
-        msg = f"Unexpected error fetching trials: {exc}"
-        logger.exception(msg)
-        empty_result["notes"] = msg
-        return empty_result
+    raw_studies: list[dict[str, Any]] = []
+    total_count: int = 0
+    page = 1
 
-    raw_studies: list[dict[str, Any]] = data.get("studies", [])
-    total_count: int = data.get("totalCount", len(raw_studies))
+    while True:
+        try:
+            data = _get_json(_BASE_URL, params)
+        except urllib.error.HTTPError as exc:
+            msg = f"ClinicalTrials.gov HTTP {exc.code}: {exc.reason}"
+            logger.warning(msg)
+            empty_result["notes"] = msg
+            return empty_result
+        except urllib.error.URLError as exc:
+            msg = f"ClinicalTrials.gov network error: {exc.reason}"
+            logger.warning(msg)
+            empty_result["notes"] = msg
+            return empty_result
+        except json.JSONDecodeError as exc:
+            msg = f"ClinicalTrials.gov returned invalid JSON: {exc}"
+            logger.warning(msg)
+            empty_result["notes"] = msg
+            return empty_result
+        except Exception as exc:  # noqa: BLE001
+            msg = f"Unexpected error fetching trials: {exc}"
+            logger.exception(msg)
+            empty_result["notes"] = msg
+            return empty_result
+
+        page_studies = data.get("studies", [])
+        raw_studies.extend(page_studies)
+        if total_count == 0:
+            total_count = data.get("totalCount", len(page_studies))
+
+        next_token = data.get("nextPageToken")
+        if not next_token or not page_studies:
+            break
+
+        params["pageToken"] = next_token
+        page += 1
+        logger.debug("Fetching page %d for sponsor '%s'", page, sponsor_name)
 
     if not raw_studies:
         empty_result["notes"] = f"No trials found on ClinicalTrials.gov for sponsor '{sponsor_name}'."
