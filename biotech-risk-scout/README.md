@@ -8,7 +8,7 @@ The SEC filings layer uses the SEC-maintained EDGAR company-submissions JSON end
 
 The SEC layer also uses the SEC company-facts XBRL endpoint for a first-pass cash runway estimate. It pulls latest reported cash and the latest operating cash-flow duration fact, estimates monthly burn when operating cash flow is negative, and calculates runway months when enough data is available.
 
-The ClinicalTrials.gov layer uses the ClinicalTrials.gov API v2 studies endpoint. It can search by sponsor/company name, map selected tickers to sponsor names, pull study metadata, estimate the nearest active primary-completion catalyst, and return trial details for research cards.
+The ClinicalTrials.gov layer uses the ClinicalTrials.gov API v2 studies endpoint. It can search by sponsor/company name, map selected tickers to sponsor names, fall back to the SEC company name when a ticker is not manually mapped, pull study metadata, estimate the nearest active primary-completion catalyst, and return trial details for research cards.
 
 The research card output is now structured like a diligence card, with separate catalyst, financial runway, SEC filings, risk read, and data-note sections.
 
@@ -134,7 +134,7 @@ Run offline unit tests with:
 python -m pytest -q biotech-risk-scout/tests
 ```
 
-The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, snapshot comparison, markdown alert reports, daily-scan alert artifact helpers, and score explanation formatting without depending on live SEC requests.
+The current tests validate the first-pass SEC company-facts cash runway calculation, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, snapshot comparison, markdown alert reports, daily-scan alert artifact helpers, score explanation formatting, and ClinicalTrials.gov sponsor fallback without depending on live SEC requests.
 
 ## GitHub Actions
 
@@ -142,4 +142,4 @@ The smoke workflow compiles the project and runs all offline tests on pushes tou
 
 ## Next Engineering Step
 
-Add sponsor fallback for ClinicalTrials.gov so the scanner can search by SEC company name when a ticker is not in the manual sponsor map.
+Add better SEC financing-form classification so shelf registrations, ATM programs, and offering prospectuses are separated instead of collapsed into one broad financing flag.
