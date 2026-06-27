@@ -54,3 +54,17 @@ def test_write_alert_report(tmp_path):
     content = output.read_text(encoding="utf-8")
     assert content.startswith("# Biotech Risk Scout Alerts")
     assert "AAA" in content
+
+
+def test_alert_report_renders_validated_sec_flags():
+    comparison = sample_comparison()
+    comparison["changed"][0]["new_record"] = {
+        "ticker": "AAA",
+        "validated_sec_flags": {"has_going_concern": True},
+        "validated_sec_filings": [{"form": "10-Q", "filing_date": "2026-06-01", "primary_document_url": "https://sec.test/filing", "matched_flags": ["has_going_concern"]}],
+    }
+    report = build_alert_report(comparison)
+    assert "## Validated SEC filing text flags" in report
+    assert "heuristic match" in report
+    assert "requires human review" in report
+    assert "https://sec.test/filing" in report
