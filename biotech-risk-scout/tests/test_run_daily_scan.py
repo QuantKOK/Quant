@@ -232,6 +232,8 @@ def _delivery_args(**kwargs):
         print_alert_report=False,
         archive_alert_report_dir=None,
         write_email_digest=None,
+        discord_webhook_url=None,
+        discord_webhook_env=None,
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
@@ -299,6 +301,46 @@ def test_deliver_alert_report_failure_does_not_raise(tmp_path, capsys):
 
     assert results[0].ok is False
     assert "WARNING" in capsys.readouterr().err
+
+
+def test_daily_runner_skips_discord_when_env_missing(monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv("MISSING_DISCORD_HOOK", raising=False)
+    _seed_alert_report(tmp_path)
+
+    results = run_daily_scan.deliver_alert_report(
+        _delivery_args(discord_webhook_env="MISSING_DISCORD_HOOK"), str(tmp_path)
+    )
+
+    assert results == []
+    assert "MISSING_DISCORD_HOOK" in capsys.readouterr().err
+
+
+def test_daily_runner_uses_discord_env_when_present(monkeypatch, tmp_path):
+    monkeypatch.setenv("PRESENT_DISCORD_HOOK", "https://discord.test/webhook/xyz")
+    _seed_alert_report(tmp_path)
+
+    captured = {}
+
+    class FakeDiscord:
+        def __init__(self, webhook_url, username="Biotech Risk Scout"):
+            captured["webhook_url"] = webhook_url
+
+        def deliver(self, report_path, report_text):
+            captured["delivered"] = True
+            from scout.delivery import DeliveryResult
+
+            return DeliveryResult(channel="discord", destination="webhook", ok=True, message="posted")
+
+    monkeypatch.setattr(run_daily_scan, "DiscordWebhookDelivery", FakeDiscord)
+
+    results = run_daily_scan.deliver_alert_report(
+        _delivery_args(discord_webhook_env="PRESENT_DISCORD_HOOK"), str(tmp_path)
+    )
+
+    assert captured["webhook_url"] == "https://discord.test/webhook/xyz"
+    assert captured.get("delivered") is True
+    assert [r.channel for r in results] == ["discord"]
+    assert results[0].ok is True
 
 
 def test_main_runs_delivery_when_flags_set(monkeypatch, tmp_path, capsys):

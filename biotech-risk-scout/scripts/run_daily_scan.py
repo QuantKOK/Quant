@@ -29,6 +29,7 @@ from app.scan import (  # noqa: E402
 from scout.delivery import (  # noqa: E402
     ConsoleDelivery,
     DeliveryResult,
+    DiscordWebhookDelivery,
     FileArchiveDelivery,
     build_email_digest,
 )
@@ -141,17 +142,44 @@ def _write_note(path: str, body: str) -> None:
         handle.write(f"# Biotech Risk Scout Alerts\n\n{body}\n")
 
 
-def deliver_alert_report(args: argparse.Namespace, output_dir: str) -> list[DeliveryResult]:
-    """Run optional, local-only delivery actions for the generated alert report.
+def _resolve_discord_webhook(args: argparse.Namespace) -> str | None:
+    """Resolve a Discord webhook URL from CLI flags, or None when not configured.
 
-    Delivery is best-effort: a failure in any channel prints a warning to stderr
-    but does not change the daily-scan exit code. No external services are
-    contacted. Returns the per-channel results (useful for tests).
+    Prefers an explicit ``--discord-webhook-url``; otherwise reads the env var
+    named by ``--discord-webhook-env``. Prints a warning and returns None when a
+    requested env var is missing or empty. The URL is never logged.
+    """
+    url = getattr(args, "discord_webhook_url", None)
+    if url:
+        return url
+    env_name = getattr(args, "discord_webhook_env", None)
+    if not env_name:
+        return None
+    value = os.environ.get(env_name, "").strip()
+    if not value:
+        print(
+            f"WARNING: Discord webhook env var '{env_name}' is missing or empty; skipping Discord delivery.",
+            file=sys.stderr,
+        )
+        return None
+    return value
+
+
+def deliver_alert_report(args: argparse.Namespace, output_dir: str) -> list[DeliveryResult]:
+    """Run optional delivery actions for the generated alert report.
+
+    Local channels (console, file archive, email-style digest) are the default.
+    Discord delivery is opt-in and only runs when a webhook is configured via
+    ``--discord-webhook-url`` or ``--discord-webhook-env``. Delivery is
+    best-effort: a failure in any channel prints a warning to stderr but does
+    not change the daily-scan exit code. Returns the per-channel results (useful
+    for tests).
     """
     want_print = getattr(args, "print_alert_report", False)
     archive_dir = getattr(args, "archive_alert_report_dir", None)
     digest_path = getattr(args, "write_email_digest", None)
-    if not (want_print or archive_dir or digest_path):
+    discord_url = _resolve_discord_webhook(args)
+    if not (want_print or archive_dir or digest_path or discord_url):
         return []
 
     alert_path = os.path.join(output_dir, "latest-alerts.md")
@@ -172,6 +200,9 @@ def deliver_alert_report(args: argparse.Namespace, output_dir: str) -> list[Deli
 
     if digest_path:
         results.append(_write_email_digest_file(digest_path, report_text))
+
+    if discord_url:
+        results.append(DiscordWebhookDelivery(discord_url).deliver(alert_path, report_text))
 
     for result in results:
         if result.ok:
@@ -294,6 +325,14 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--write-email-digest",
         help="Path to write an email-style digest file (no email is sent)",
+    )
+    parser.add_argument(
+        "--discord-webhook-url",
+        help="Discord webhook URL to post an alert summary (prefer --discord-webhook-env to avoid logging the URL)",
+    )
+    parser.add_argument(
+        "--discord-webhook-env",
+        help="Name of an environment variable holding the Discord webhook URL (opt-in; nothing is sent without it)",
     )
     args = parser.parse_args(argv)
 

@@ -8,6 +8,7 @@ Issues, etc.) be added without changing existing callers.
 
 from scout.delivery.base import AlertDelivery, DeliveryResult
 from scout.delivery.console import ConsoleDelivery
+from scout.delivery.discord import DiscordWebhookDelivery, build_discord_message
 from scout.delivery.email_digest import build_email_digest
 from scout.delivery.files import FileArchiveDelivery
 
@@ -16,5 +17,7 @@ __all__ = [
     "DeliveryResult",
     "ConsoleDelivery",
     "FileArchiveDelivery",
+    "DiscordWebhookDelivery",
+    "build_discord_message",
     "build_email_digest",
 ]
