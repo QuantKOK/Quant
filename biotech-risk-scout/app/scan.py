@@ -15,6 +15,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from scout.ingest.clinical_trials import fetch_clinical_trials  # type: ignore
 from scout.ingest.sec_filings import SecClientError, fetch_sec_filings  # type: ignore
+from scout.ingest.sec_validation import (  # type: ignore
+    DEFAULT_SEC_VALIDATION_CACHE,
+    validate_selected_filing_flags,
+)
 from scout.reports.alerts import write_alert_report  # type: ignore
 from scout.reports.research_card import ResearchCard  # type: ignore
 from scout.scoring.research_priority import PriorityScore, compute_priority_score  # type: ignore
@@ -50,12 +54,29 @@ EXPORT_COLUMNS = [
     "latest_10q_date",
     "latest_10k_date",
     "latest_8k_date",
+    "validated_sec_flags",
+    "validated_sec_filings",
+    "sec_validation_errors",
 ]
 
 
-def build_scan_row(ticker: str) -> dict[str, Any]:
+def build_scan_row(
+    ticker: str,
+    validate_sec_text: bool = False,
+    max_sec_documents: int = 3,
+    sec_validation_cache: str | None = None,
+) -> dict[str, Any]:
     """Fetch sources, build a card, and score one ticker."""
     filings = fetch_sec_filings(ticker)
+    validation = (
+        validate_selected_filing_flags(
+            filings,
+            max_documents=max_sec_documents,
+            cache_path=sec_validation_cache,
+        )
+        if validate_sec_text
+        else None
+    )
     trials = fetch_clinical_trials(ticker, fallback_sponsor_name=filings.get("company_name"))
     card = ResearchCard.from_sources(ticker=ticker, filings=filings, trials=trials)
 
@@ -88,11 +109,25 @@ def build_scan_row(ticker: str) -> dict[str, Any]:
         "sponsor_names": card.sponsor_names,
         "trials": card.extra.get("trials", []),
     }
+    if validation is not None:
+        scorer_input.update(
+            {
+                "validated_sec_flags": validation["validated_flags"],
+                "validated_sec_filings": validation["validated_filings"],
+                "sec_validation_errors": validation["validation_errors"],
+            }
+        )
     priority = compute_priority_score(scorer_input)
     return {"ticker": card.ticker, "card": card, "priority": priority, "data": scorer_input}
 
 
-def scan_tickers(tickers: list[str], max_workers: int = 8) -> list[dict[str, Any]]:
+def scan_tickers(
+    tickers: list[str],
+    max_workers: int = 8,
+    validate_sec_text: bool = False,
+    max_sec_documents: int = 3,
+    sec_validation_cache: str | None = None,
+) -> list[dict[str, Any]]:
     """Scan tickers concurrently and return ranked rows.
 
     Each ticker fetches SEC and ClinicalTrials.gov data in parallel threads.
@@ -107,7 +142,16 @@ def scan_tickers(tickers: list[str], max_workers: int = 8) -> list[dict[str, Any
 
     rows: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=min(max_workers, len(tickers))) as pool:
-        future_to_ticker = {pool.submit(build_scan_row, ticker): ticker for ticker in tickers}
+        future_to_ticker = {
+            pool.submit(
+                build_scan_row,
+                ticker,
+                validate_sec_text,
+                max_sec_documents,
+                sec_validation_cache,
+            ): ticker
+            for ticker in tickers
+        }
         for future in as_completed(future_to_ticker):
             ticker = future_to_ticker[future]
             try:
@@ -231,7 +275,12 @@ def export_rows_to_json(rows: list[dict[str, Any]], path: str, min_score: int = 
 
 def export_rows_to_csv(rows: list[dict[str, Any]], path: str, min_score: int = 0) -> None:
     """Write ranked scan rows to CSV."""
-    payload = export_records(rows, min_score=min_score)
+    payload = []
+    for record in export_records(rows, min_score=min_score):
+        csv_record = dict(record)
+        for field in ("validated_sec_flags", "validated_sec_filings", "sec_validation_errors"):
+            csv_record[field] = json.dumps(csv_record.get(field), sort_keys=True)
+        payload.append(csv_record)
     with open(path, "w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=EXPORT_COLUMNS)
         writer.writeheader()
@@ -295,7 +344,7 @@ def resolve_tickers(cli_tickers: list[str], tickers_file: str | None) -> list[st
 def _export_record(rank: int, row: dict[str, Any]) -> dict[str, Any]:
     data = row.get("data", {})
     priority: PriorityScore = row["priority"]
-    return {
+    record = {
         "rank": rank,
         "ticker": row.get("ticker"),
         "company_name": data.get("company_name"),
@@ -326,6 +375,15 @@ def _export_record(rank: int, row: dict[str, Any]) -> dict[str, Any]:
         "latest_10k_date": _filing_date(data.get("latest_10k")),
         "latest_8k_date": _filing_date(data.get("latest_8k")),
     }
+    if "validated_sec_flags" in data:
+        record.update(
+            {
+                "validated_sec_flags": data["validated_sec_flags"],
+                "validated_sec_filings": data.get("validated_sec_filings", []),
+                "sec_validation_errors": data.get("sec_validation_errors", []),
+            }
+        )
+    return record
 
 
 def _filter_rows(rows: list[dict[str, Any]], min_score: int) -> list[dict[str, Any]]:
@@ -421,6 +479,13 @@ def main(argv=None) -> int:
     parser.add_argument("--explain", action="store_true", help="Print per-ticker score explanations after the scan table")
     parser.add_argument("--no-table", action="store_true", help="Do not print the table; useful for export-only runs")
     parser.add_argument("--max-workers", type=int, default=8, help="Max concurrent ticker fetches (default: 8)")
+    parser.add_argument("--validate-sec-text", action="store_true", help="Validate selected high-risk flags against SEC filing text")
+    parser.add_argument("--max-sec-documents", type=int, default=3, help="Maximum SEC documents to validate per ticker (default: 3)")
+    parser.add_argument(
+        "--sec-validation-cache",
+        default=DEFAULT_SEC_VALIDATION_CACHE,
+        help="Persistent SEC validation cache path",
+    )
     args = parser.parse_args(argv)
 
     if args.compare_snapshots:
@@ -441,7 +506,13 @@ def main(argv=None) -> int:
     if not tickers:
         parser.error("provide at least one ticker, --tickers-file, or --compare-snapshots OLD NEW")
 
-    rows = scan_tickers(tickers, max_workers=args.max_workers)
+    rows = scan_tickers(
+        tickers,
+        max_workers=args.max_workers,
+        validate_sec_text=args.validate_sec_text,
+        max_sec_documents=max(0, args.max_sec_documents),
+        sec_validation_cache=args.sec_validation_cache,
+    )
     if not args.no_table:
         print_scan_table(rows, min_score=args.min_score)
     if args.explain:

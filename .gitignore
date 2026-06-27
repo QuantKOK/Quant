@@ -8,6 +8,7 @@ __pycache__/
 
 # Test artifacts
 .pytest_cache/
+biotech-risk-scout/.cache/
 
 # Logs
 *.log

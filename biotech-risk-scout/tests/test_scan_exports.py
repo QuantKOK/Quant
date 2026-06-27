@@ -119,3 +119,27 @@ def test_format_score_explanation_includes_score_breakdown():
     assert "Cash: $500.0M" in explanation
     assert "Monthly burn: $20.0M" in explanation
     assert "Runway: 25.0mo" in explanation
+
+
+def test_normal_export_omits_validation_data(tmp_path):
+    output = tmp_path / "normal.json"
+    export_rows_to_json([make_row()], str(output))
+    record = json.loads(output.read_text(encoding="utf-8"))[0]
+    assert "validated_sec_flags" not in record
+    assert "validated_sec_filings" not in record
+    assert "sec_validation_errors" not in record
+
+
+def test_validated_json_is_structured_and_csv_is_compact_json(tmp_path):
+    row = make_row()
+    row["data"]["validated_sec_flags"] = {"has_going_concern": True}
+    row["data"]["validated_sec_filings"] = [{"form": "10-Q", "matched_flags": ["has_going_concern"]}]
+    row["data"]["sec_validation_errors"] = []
+    json_path = tmp_path / "validated.json"
+    csv_path = tmp_path / "validated.csv"
+    export_rows_to_json([row], str(json_path))
+    export_rows_to_csv([row], str(csv_path))
+    assert json.loads(json_path.read_text(encoding="utf-8"))[0]["validated_sec_flags"]["has_going_concern"] is True
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        record = next(csv.DictReader(handle))
+    assert json.loads(record["validated_sec_flags"])["has_going_concern"] is True

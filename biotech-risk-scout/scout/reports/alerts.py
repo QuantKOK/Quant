@@ -26,6 +26,7 @@ def build_alert_report(comparison: dict[str, Any], max_items: int = 10) -> str:
     lines.extend(_new_names(comparison, max_items=max_items))
     lines.extend(_removed_names(comparison, max_items=max_items))
     lines.extend(_manual_review(comparison, max_items=max_items))
+    lines.extend(_validated_sec_flags(comparison, max_items=max_items))
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -96,6 +97,29 @@ def _manual_review(comparison: dict[str, Any], max_items: int) -> list[str]:
                 continue
             label = field.replace("_", " ")
             lines.append(f"  - {label}: {values.get('old')} → {values.get('new')}")
+    lines.append("")
+    return lines
+
+
+def _validated_sec_flags(comparison: dict[str, Any], max_items: int) -> list[str]:
+    records = list(comparison.get("added_records", []))
+    records.extend(item.get("new_record", {}) for item in comparison.get("changed", []))
+    lines = ["## Validated SEC filing text flags", ""]
+    rendered = 0
+    for record in records:
+        flags = [name for name, matched in (record.get("validated_sec_flags") or {}).items() if matched]
+        filings = [filing for filing in record.get("validated_sec_filings") or [] if filing.get("matched_flags")]
+        if not flags and not filings:
+            continue
+        lines.append(f"- **{record.get('ticker', '?')}**: heuristic match in filing text; requires human review ({', '.join(flags)}).")
+        for filing in filings:
+            label = f"{filing.get('form') or 'filing'} {filing.get('filing_date') or ''}".strip()
+            lines.append(f"  - [{label}]({filing.get('primary_document_url')}): matched filing text for {', '.join(filing['matched_flags'])}.")
+        rendered += 1
+        if rendered >= max_items:
+            break
+    if not rendered:
+        lines.append("No validated filing-text matches for new or changed tickers.")
     lines.append("")
     return lines
 

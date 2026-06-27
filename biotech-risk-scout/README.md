@@ -155,6 +155,14 @@ Two optional helpers exist in `scout/ingest/sec_filings.py` for ad-hoc validatio
 * `fetch_filing_document_text(url)` — fetches and lightly HTML-strips a filing document from a `primary_document_url`. **Not called during normal scans** to avoid SEC rate-limit impact and performance regression.
 * `scan_filing_text_flags(text)` — pure offline function that scans filing text for going-concern, reverse-split, ATM/offering, and listing non-compliance signals. Can be called on any text string without network access.
 
+Default scans do not fetch SEC filing text. Add `--validate-sec-text` to validate only selected high-risk filing groups, with `--max-sec-documents 3` controlling the per-ticker cap. Validation results are heuristic matches for diligence triage, require human review, and are not final conclusions. JSON and snapshots retain the structured results; CSV stores the validation fields as compact JSON strings.
+
+```bash
+python biotech-risk-scout/app/scan.py MRNA VKTX --validate-sec-text --max-sec-documents 2 --no-table --json scan-validated.json
+```
+
+Validated results are cached by filing-document URL in `biotech-risk-scout/.cache/sec-validation.json`, so later validation scans do not refetch unchanged filings. Use `--sec-validation-cache PATH` to place the cache elsewhere. Cache read/write failures are reported in `sec_validation_errors` and do not crash the scan.
+
 ## Tests
 
 Run offline unit tests with:
@@ -171,4 +179,4 @@ The smoke workflow compiles the project and runs all offline tests on pushes tou
 
 ## Next Engineering Step
 
-Wire selected filing-text validation into alert reports for only the highest-risk financing/structural flags.
+Add cache expiry and pruning controls for stale SEC filing-text validation entries.

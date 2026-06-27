@@ -81,7 +81,7 @@ def compare_snapshots(old_snapshot: dict[str, Any], new_snapshot: dict[str, Any]
         new = new_records[ticker]
         score_delta = _safe_number(new.get("score"), 0) - _safe_number(old.get("score"), 0)
         changes: dict[str, Any] = {}
-        for field in ("score", "rank", "upcoming_catalyst", "days_until_event", "cash_runway_months", "dilution_risk", "evidence_quality"):
+        for field in ("score", "rank", "upcoming_catalyst", "days_until_event", "cash_runway_months", "dilution_risk", "evidence_quality", "validated_sec_flags", "validated_sec_filings", "sec_validation_errors"):
             if old.get(field) != new.get(field):
                 changes[field] = {"old": old.get(field), "new": new.get(field)}
         if changes:
@@ -92,6 +92,7 @@ def compare_snapshots(old_snapshot: dict[str, Any], new_snapshot: dict[str, Any]
                     "old_score": old.get("score"),
                     "new_score": new.get("score"),
                     "changes": changes,
+                    "new_record": new,
                 }
             )
 
@@ -100,6 +101,7 @@ def compare_snapshots(old_snapshot: dict[str, Any], new_snapshot: dict[str, Any]
         "old_generated_at": old_snapshot.get("generated_at"),
         "new_generated_at": new_snapshot.get("generated_at"),
         "added": added,
+        "added_records": [new_records[ticker] for ticker in added],
         "removed": removed,
         "changed": changed,
         "summary": {
