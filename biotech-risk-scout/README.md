@@ -62,13 +62,13 @@ python biotech-risk-scout/app/main.py MRNA
 Scan and rank multiple tickers:
 
 ```bash
-python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP
+python biotech-risk-scout/app/scan.py MRNA VKTX FLNA PRAX CRSP
 ```
 
 Print score explanations after scanning:
 
 ```bash
-python biotech-risk-scout/app/scan.py MRNA VKTX SAVA --explain
+python biotech-risk-scout/app/scan.py MRNA VKTX FLNA --explain
 ```
 
 The explanation shows each ticker's 0-100 score, component breakdown, main reason, red flags, and key inputs used.
@@ -84,8 +84,8 @@ Watchlist files can use newlines, commas, spaces, blank lines, and `#` comments.
 Export scan results:
 
 ```bash
-python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP --json scan.json
-python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP --csv scan.csv
+python biotech-risk-scout/app/scan.py MRNA VKTX FLNA PRAX CRSP --json scan.json
+python biotech-risk-scout/app/scan.py MRNA VKTX FLNA PRAX CRSP --csv scan.csv
 python biotech-risk-scout/app/scan.py --tickers-file biotech-watchlist.txt --csv scan.csv --json scan.json --no-table
 ```
 
