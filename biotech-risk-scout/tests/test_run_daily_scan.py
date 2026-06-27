@@ -100,6 +100,7 @@ def test_build_command_includes_sec_validation_options(tmp_path):
         validate_sec_text=True,
         max_sec_documents=2,
         sec_validation_cache=str(tmp_path / "sec-validation.json"),
+        sec_validation_cache_ttl_days=45,
     )
 
     command = build_command(args)
@@ -109,6 +110,7 @@ def test_build_command_includes_sec_validation_options(tmp_path):
     assert command[command.index("--sec-validation-cache") + 1] == str(
         tmp_path / "sec-validation.json"
     )
+    assert command[command.index("--sec-validation-cache-ttl-days") + 1] == "45"
 
 
 def test_run_scan_passes_sec_validation_options(monkeypatch, tmp_path):

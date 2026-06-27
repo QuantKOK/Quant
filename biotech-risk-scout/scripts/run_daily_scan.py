@@ -236,6 +236,8 @@ def build_command(args: argparse.Namespace) -> list[str]:
                 os.path.abspath(
                     getattr(args, "sec_validation_cache", DEFAULT_SEC_VALIDATION_CACHE)
                 ),
+                "--sec-validation-cache-ttl-days",
+                str(getattr(args, "sec_validation_cache_ttl_days", DEFAULT_CACHE_TTL_DAYS)),
             ]
         )
     return command
