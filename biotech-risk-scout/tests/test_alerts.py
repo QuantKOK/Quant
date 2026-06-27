@@ -85,3 +85,63 @@ def test_alert_report_omits_sec_section_when_flags_are_false():
     report = build_alert_report(comparison)
 
     assert "## Validated SEC filing text flags" not in report
+
+
+def test_operator_brief_appears_and_counts():
+    report = build_alert_report(sample_comparison())
+
+    assert "## Operator Brief" in report
+    # Operator Brief sits above the existing Summary section.
+    assert report.index("## Operator Brief") < report.index("## Summary")
+    assert "- Scan date: 2026-06-25" in report
+    assert "- New names surfaced: 1" in report
+    assert "- Removed names: 1" in report
+    assert "- Names with score changes: 1" in report
+    assert "- Names with validated SEC filing-text flags: 0" in report
+    assert "- Highest priority name: AAA, score 72" in report
+    assert "- Biggest positive score move: AAA, +12" in report
+    assert "- Biggest negative score move: none" in report
+
+
+def test_operator_brief_counts_validated_sec_flags():
+    comparison = sample_comparison()
+    comparison["added_records"] = [
+        {"ticker": "CCC", "score": 80, "validated_sec_flags": {"has_going_concern": True}},
+    ]
+
+    report = build_alert_report(comparison)
+
+    assert "- Names with validated SEC filing-text flags: 1" in report
+
+
+def test_operator_brief_highest_priority_prefers_top_score():
+    comparison = sample_comparison()
+    comparison["added_records"] = [{"ticker": "ZZZ", "score": 95}]
+
+    report = build_alert_report(comparison)
+
+    assert "- Highest priority name: ZZZ, score 95" in report
+
+
+def test_operator_brief_reports_no_score_changes():
+    comparison = {
+        "old_generated_at": "2026-06-24T12:00:00+00:00",
+        "new_generated_at": "2026-06-25T12:00:00+00:00",
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "summary": {"added_count": 0, "removed_count": 0, "changed_count": 0},
+    }
+
+    report = build_alert_report(comparison)
+
+    assert "- New names surfaced: 0" in report
+    assert "- No score changes detected in this run." in report
+
+
+def test_operator_brief_empty_comparison_does_not_crash():
+    report = build_alert_report({})
+
+    assert "## Operator Brief" in report
+    assert "- Scan date: unknown" in report
+    assert "- No score changes detected in this run." in report

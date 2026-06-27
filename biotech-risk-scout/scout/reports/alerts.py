@@ -14,13 +14,20 @@ def build_alert_report(comparison: dict[str, Any], max_items: int = 10) -> str:
         f"Old snapshot: `{comparison.get('old_generated_at')}`",
         f"New snapshot: `{comparison.get('new_generated_at')}`",
         "",
-        "## Summary",
-        "",
-        f"- Added tickers: **{summary.get('added_count', 0)}**",
-        f"- Removed tickers: **{summary.get('removed_count', 0)}**",
-        f"- Changed tickers: **{summary.get('changed_count', 0)}**",
-        "",
     ]
+
+    lines.extend(_operator_brief(comparison))
+
+    lines.extend(
+        [
+            "## Summary",
+            "",
+            f"- Added tickers: **{summary.get('added_count', 0)}**",
+            f"- Removed tickers: **{summary.get('removed_count', 0)}**",
+            f"- Changed tickers: **{summary.get('changed_count', 0)}**",
+            "",
+        ]
+    )
 
     lines.extend(_biggest_score_moves(comparison, max_items=max_items))
     lines.extend(_new_names(comparison, max_items=max_items))
@@ -35,6 +42,98 @@ def write_alert_report(comparison: dict[str, Any], path: str, max_items: int = 1
     """Write a markdown alert report to disk."""
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(build_alert_report(comparison, max_items=max_items))
+
+
+def _operator_brief(comparison: dict[str, Any]) -> list[str]:
+    """Build a plain-English operator brief summarizing what changed today.
+
+    Robust to missing or partial comparison fields. Uses neutral diligence
+    language only — this is a triage summary, not investment advice.
+    """
+    added = comparison.get("added") or []
+    removed = comparison.get("removed") or []
+    changed = comparison.get("changed") or []
+
+    scan_date = str(comparison.get("new_generated_at") or "")[:10] or "unknown"
+    score_changed = [item for item in changed if item.get("old_score") != item.get("new_score")]
+    sec_flag_count = _count_validated_sec_flag_records(comparison)
+
+    lines = [
+        "## Operator Brief",
+        "",
+        f"- Scan date: {scan_date}",
+        f"- New names surfaced: {len(added)}",
+        f"- Removed names: {len(removed)}",
+        f"- Names with score changes: {len(score_changed)}",
+        f"- Names with validated SEC filing-text flags: {sec_flag_count}",
+    ]
+
+    highest = _highest_priority_record(comparison)
+    if highest is not None:
+        ticker, score = highest
+        lines.append(f"- Highest priority name: {ticker}, score {score}")
+
+    if score_changed:
+        positive = max(score_changed, key=_score_delta)
+        negative = min(score_changed, key=_score_delta)
+        if _score_delta(positive) > 0:
+            lines.append(f"- Biggest positive score move: {positive.get('ticker', '?')}, +{_score_delta(positive)}")
+        else:
+            lines.append("- Biggest positive score move: none")
+        if _score_delta(negative) < 0:
+            lines.append(f"- Biggest negative score move: {negative.get('ticker', '?')}, {_score_delta(negative)}")
+        else:
+            lines.append("- Biggest negative score move: none")
+    else:
+        lines.append("- No score changes detected in this run.")
+
+    lines.append("")
+    return lines
+
+
+def _count_validated_sec_flag_records(comparison: dict[str, Any]) -> int:
+    """Count added/changed records that have at least one True validated SEC flag."""
+    records = list(comparison.get("added_records") or [])
+    records.extend(item.get("new_record") or {} for item in comparison.get("changed") or [])
+    count = 0
+    for record in records:
+        flags = record.get("validated_sec_flags")
+        if isinstance(flags, dict) and any(bool(value) for value in flags.values()):
+            count += 1
+    return count
+
+
+def _highest_priority_record(comparison: dict[str, Any]) -> tuple[str, int] | None:
+    """Return (ticker, score) for the highest-scoring available record, or None."""
+    candidates: list[tuple[int, str]] = []
+    for record in comparison.get("added_records") or []:
+        if record.get("score") is not None and record.get("ticker") is not None:
+            candidates.append((_safe_int(record.get("score")), str(record.get("ticker"))))
+    for item in comparison.get("changed") or []:
+        record = item.get("new_record") or {}
+        score = record.get("score", item.get("new_score"))
+        ticker = record.get("ticker", item.get("ticker"))
+        if score is not None and ticker is not None:
+            candidates.append((_safe_int(score), str(ticker)))
+    if not candidates:
+        return None
+    score, ticker = max(candidates, key=lambda pair: pair[0])
+    return ticker, score
+
+
+def _score_delta(item: dict[str, Any]) -> int:
+    """Return an integer score delta for a changed item, robust to missing fields."""
+    delta = item.get("score_delta")
+    if delta is None:
+        delta = _safe_int(item.get("new_score")) - _safe_int(item.get("old_score"))
+    return _safe_int(delta)
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _biggest_score_moves(comparison: dict[str, Any], max_items: int) -> list[str]:

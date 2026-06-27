@@ -26,7 +26,17 @@ from app.scan import (  # noqa: E402
     print_scan_table,
     scan_tickers,
 )
-from scout.ingest.sec_validation import DEFAULT_SEC_VALIDATION_CACHE  # noqa: E402
+from scout.delivery import (  # noqa: E402
+    ConsoleDelivery,
+    DeliveryResult,
+    FileArchiveDelivery,
+    build_email_digest,
+)
+from scout.ingest.sec_validation import (  # noqa: E402
+    DEFAULT_CACHE_TTL_DAYS,
+    DEFAULT_SEC_VALIDATION_CACHE,
+    prune_validation_cache,
+)
 from scout.reports.alerts import write_alert_report  # noqa: E402
 from scout.storage.snapshots import compare_snapshots, load_snapshot  # noqa: E402
 
@@ -67,6 +77,7 @@ def run_scan(args: argparse.Namespace, output_dir: str) -> int:
         validate_sec_text=getattr(args, "validate_sec_text", False),
         max_sec_documents=max(0, getattr(args, "max_sec_documents", 2)),
         sec_validation_cache=getattr(args, "sec_validation_cache", None),
+        sec_validation_ttl_days=getattr(args, "sec_validation_cache_ttl_days", DEFAULT_CACHE_TTL_DAYS),
     )
 
     failed = [row for row in rows if row.get("card") is None]
@@ -130,6 +141,69 @@ def _write_note(path: str, body: str) -> None:
         handle.write(f"# Biotech Risk Scout Alerts\n\n{body}\n")
 
 
+def deliver_alert_report(args: argparse.Namespace, output_dir: str) -> list[DeliveryResult]:
+    """Run optional, local-only delivery actions for the generated alert report.
+
+    Delivery is best-effort: a failure in any channel prints a warning to stderr
+    but does not change the daily-scan exit code. No external services are
+    contacted. Returns the per-channel results (useful for tests).
+    """
+    want_print = getattr(args, "print_alert_report", False)
+    archive_dir = getattr(args, "archive_alert_report_dir", None)
+    digest_path = getattr(args, "write_email_digest", None)
+    if not (want_print or archive_dir or digest_path):
+        return []
+
+    alert_path = os.path.join(output_dir, "latest-alerts.md")
+    try:
+        with open(alert_path, "r", encoding="utf-8") as handle:
+            report_text = handle.read()
+    except OSError as exc:
+        print(f"WARNING: could not read alert report for delivery: {exc}", file=sys.stderr)
+        return []
+
+    results: list[DeliveryResult] = []
+
+    if want_print:
+        results.append(ConsoleDelivery().deliver(alert_path, report_text))
+
+    if archive_dir:
+        results.append(FileArchiveDelivery(archive_dir).deliver(alert_path, report_text))
+
+    if digest_path:
+        results.append(_write_email_digest_file(digest_path, report_text))
+
+    for result in results:
+        if result.ok:
+            print(f"Delivery [{result.channel}]: {result.message}", file=sys.stderr)
+        else:
+            print(f"WARNING: delivery [{result.channel}] failed: {result.message}", file=sys.stderr)
+    return results
+
+
+def _write_email_digest_file(digest_path: str, report_text: str) -> DeliveryResult:
+    """Write an email-style digest file. No email is sent."""
+    digest = build_email_digest(report_text)
+    try:
+        parent = os.path.dirname(os.path.abspath(digest_path))
+        os.makedirs(parent, exist_ok=True)
+        with open(digest_path, "w", encoding="utf-8") as handle:
+            handle.write(f"Subject: {digest['subject']}\n\n{digest['body']}")
+    except OSError as exc:
+        return DeliveryResult(
+            channel="email_digest",
+            destination=digest_path,
+            ok=False,
+            message=f"failed to write email digest: {exc}",
+        )
+    return DeliveryResult(
+        channel="email_digest",
+        destination=digest_path,
+        ok=True,
+        message=f"wrote email digest to {digest_path}",
+    )
+
+
 # Keep build_command for tests that import it directly
 def build_command(args: argparse.Namespace) -> list[str]:
     """Retained for backwards-compatibility with existing tests only.
@@ -162,6 +236,8 @@ def build_command(args: argparse.Namespace) -> list[str]:
                 os.path.abspath(
                     getattr(args, "sec_validation_cache", DEFAULT_SEC_VALIDATION_CACHE)
                 ),
+                "--sec-validation-cache-ttl-days",
+                str(getattr(args, "sec_validation_cache_ttl_days", DEFAULT_CACHE_TTL_DAYS)),
             ]
         )
     return command
@@ -200,6 +276,25 @@ def main(argv=None) -> int:
         default=DEFAULT_SEC_VALIDATION_CACHE,
         help="Persistent SEC validation cache path",
     )
+    parser.add_argument(
+        "--sec-validation-cache-ttl-days",
+        type=int,
+        default=DEFAULT_CACHE_TTL_DAYS,
+        help=f"Days a cached SEC validation entry stays fresh before refetch (default: {DEFAULT_CACHE_TTL_DAYS})",
+    )
+    parser.add_argument(
+        "--print-alert-report",
+        action="store_true",
+        help="Print the generated alert report to stdout after the scan",
+    )
+    parser.add_argument(
+        "--archive-alert-report-dir",
+        help="Directory to archive a copy of the generated alert report",
+    )
+    parser.add_argument(
+        "--write-email-digest",
+        help="Path to write an email-style digest file (no email is sent)",
+    )
     args = parser.parse_args(argv)
 
     if not os.environ.get("SEC_USER_AGENT", "").strip():
@@ -223,6 +318,18 @@ def main(argv=None) -> int:
         return exit_code
 
     write_post_scan_alerts(output_dir, previous_snapshot)
+    deliver_alert_report(args, output_dir)
+
+    if args.validate_sec_text and args.sec_validation_cache:
+        counts = prune_validation_cache(args.sec_validation_cache, ttl_days=args.sec_validation_cache_ttl_days)
+        if counts["removed"]:
+            print(
+                f"Pruned SEC validation cache: removed {counts['removed']} stale "
+                f"entr{'y' if counts['removed'] == 1 else 'ies'} "
+                f"({counts['before']} -> {counts['after']}).",
+                file=sys.stderr,
+            )
+
     return 0
 
 

@@ -100,6 +100,7 @@ def test_build_command_includes_sec_validation_options(tmp_path):
         validate_sec_text=True,
         max_sec_documents=2,
         sec_validation_cache=str(tmp_path / "sec-validation.json"),
+        sec_validation_cache_ttl_days=45,
     )
 
     command = build_command(args)
@@ -109,6 +110,7 @@ def test_build_command_includes_sec_validation_options(tmp_path):
     assert command[command.index("--sec-validation-cache") + 1] == str(
         tmp_path / "sec-validation.json"
     )
+    assert command[command.index("--sec-validation-cache-ttl-days") + 1] == "45"
 
 
 def test_run_scan_passes_sec_validation_options(monkeypatch, tmp_path):
@@ -134,6 +136,7 @@ def test_run_scan_passes_sec_validation_options(monkeypatch, tmp_path):
         validate_sec_text=True,
         max_sec_documents=2,
         sec_validation_cache=str(tmp_path / "sec-validation.json"),
+        sec_validation_cache_ttl_days=45,
     )
 
     assert run_daily_scan.run_scan(args, str(tmp_path)) == 0
@@ -143,6 +146,7 @@ def test_run_scan_passes_sec_validation_options(monkeypatch, tmp_path):
         "validate_sec_text": True,
         "max_sec_documents": 2,
         "sec_validation_cache": str(tmp_path / "sec-validation.json"),
+        "sec_validation_ttl_days": 45,
     }
 
 
@@ -218,3 +222,110 @@ def test_main_proceeds_when_sec_user_agent_is_set(monkeypatch, tmp_path):
         ["--tickers-file", str(tickers_file), "--output-dir", str(tmp_path)]
     ) == 0
     assert called
+
+
+# --- Alert-report delivery ----------------------------------------------------
+
+
+def _delivery_args(**kwargs):
+    defaults = dict(
+        print_alert_report=False,
+        archive_alert_report_dir=None,
+        write_email_digest=None,
+    )
+    defaults.update(kwargs)
+    return argparse.Namespace(**defaults)
+
+
+def _seed_alert_report(output_dir):
+    report = "# Biotech Risk Scout Alerts\n\n## Summary\n\n- Added tickers: **1**\n"
+    (output_dir / "latest-alerts.md").write_text(report, encoding="utf-8")
+    return report
+
+
+def test_deliver_alert_report_no_flags_is_noop(tmp_path):
+    # No flags set and no alert file present: must not raise and returns nothing.
+    results = run_daily_scan.deliver_alert_report(_delivery_args(), str(tmp_path))
+    assert results == []
+
+
+def test_deliver_alert_report_print(tmp_path, capsys):
+    report = _seed_alert_report(tmp_path)
+
+    results = run_daily_scan.deliver_alert_report(
+        _delivery_args(print_alert_report=True), str(tmp_path)
+    )
+
+    assert [r.channel for r in results] == ["console"]
+    assert report in capsys.readouterr().out
+
+
+def test_deliver_alert_report_archive(tmp_path):
+    report = _seed_alert_report(tmp_path)
+    archive_dir = tmp_path / "archive"
+
+    results = run_daily_scan.deliver_alert_report(
+        _delivery_args(archive_alert_report_dir=str(archive_dir)), str(tmp_path)
+    )
+
+    archived = archive_dir / "latest-alerts.md"
+    assert results[0].ok is True
+    assert archived.read_text(encoding="utf-8") == report
+
+
+def test_deliver_alert_report_email_digest(tmp_path):
+    _seed_alert_report(tmp_path)
+    digest_path = tmp_path / "digests" / "digest.txt"
+
+    results = run_daily_scan.deliver_alert_report(
+        _delivery_args(write_email_digest=str(digest_path)), str(tmp_path)
+    )
+
+    assert results[0].channel == "email_digest"
+    assert results[0].ok is True
+    content = digest_path.read_text(encoding="utf-8")
+    assert content.startswith("Subject: ")
+    assert "not investment advice" in content
+
+
+def test_deliver_alert_report_failure_does_not_raise(tmp_path, capsys):
+    _seed_alert_report(tmp_path)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("x", encoding="utf-8")
+
+    results = run_daily_scan.deliver_alert_report(
+        _delivery_args(archive_alert_report_dir=str(blocker)), str(tmp_path)
+    )
+
+    assert results[0].ok is False
+    assert "WARNING" in capsys.readouterr().err
+
+
+def test_main_runs_delivery_when_flags_set(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SEC_USER_AGENT", "BiotechRiskScout test-contact")
+    tickers_file = tmp_path / "watchlist.txt"
+    tickers_file.write_text("MRNA\n", encoding="utf-8")
+    output_dir = tmp_path / "out"
+    digest_path = tmp_path / "digest.txt"
+
+    report = "# Biotech Risk Scout Alerts\n\nbody line\n"
+
+    def fake_write_alerts(out_dir, _previous):
+        (tmp_path / "out" / "latest-alerts.md").write_text(report, encoding="utf-8")
+
+    monkeypatch.setattr(run_daily_scan, "run_scan", lambda args, out_dir: 0)
+    monkeypatch.setattr(run_daily_scan, "write_post_scan_alerts", fake_write_alerts)
+
+    code = run_daily_scan.main(
+        [
+            "--tickers-file", str(tickers_file),
+            "--output-dir", str(output_dir),
+            "--print-alert-report",
+            "--write-email-digest", str(digest_path),
+        ]
+    )
+
+    assert code == 0
+    assert report in capsys.readouterr().out
+    assert digest_path.exists()
+    assert "not investment advice" in digest_path.read_text(encoding="utf-8")

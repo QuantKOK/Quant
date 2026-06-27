@@ -16,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from scout.ingest.clinical_trials import fetch_clinical_trials  # type: ignore
 from scout.ingest.sec_filings import SecClientError, fetch_sec_filings  # type: ignore
 from scout.ingest.sec_validation import (  # type: ignore
+    DEFAULT_CACHE_TTL_DAYS,
     DEFAULT_SEC_VALIDATION_CACHE,
     validate_selected_filing_flags,
 )
@@ -65,6 +66,7 @@ def build_scan_row(
     validate_sec_text: bool = False,
     max_sec_documents: int = 3,
     sec_validation_cache: str | None = None,
+    sec_validation_ttl_days: int = 30,
 ) -> dict[str, Any]:
     """Fetch sources, build a card, and score one ticker."""
     filings = fetch_sec_filings(ticker)
@@ -73,6 +75,7 @@ def build_scan_row(
             filings,
             max_documents=max_sec_documents,
             cache_path=sec_validation_cache,
+            ttl_days=sec_validation_ttl_days,
         )
         if validate_sec_text
         else None
@@ -127,6 +130,7 @@ def scan_tickers(
     validate_sec_text: bool = False,
     max_sec_documents: int = 3,
     sec_validation_cache: str | None = None,
+    sec_validation_ttl_days: int = 30,
 ) -> list[dict[str, Any]]:
     """Scan tickers concurrently and return ranked rows.
 
@@ -149,6 +153,7 @@ def scan_tickers(
                 validate_sec_text,
                 max_sec_documents,
                 sec_validation_cache,
+                sec_validation_ttl_days,
             ): ticker
             for ticker in tickers
         }
@@ -486,6 +491,12 @@ def main(argv=None) -> int:
         default=DEFAULT_SEC_VALIDATION_CACHE,
         help="Persistent SEC validation cache path",
     )
+    parser.add_argument(
+        "--sec-validation-cache-ttl-days",
+        type=int,
+        default=DEFAULT_CACHE_TTL_DAYS,
+        help=f"Days a cached SEC validation entry stays fresh before refetch (default: {DEFAULT_CACHE_TTL_DAYS})",
+    )
     args = parser.parse_args(argv)
 
     if args.compare_snapshots:
@@ -512,6 +523,7 @@ def main(argv=None) -> int:
         validate_sec_text=args.validate_sec_text,
         max_sec_documents=max(0, args.max_sec_documents),
         sec_validation_cache=args.sec_validation_cache,
+        sec_validation_ttl_days=args.sec_validation_cache_ttl_days,
     )
     if not args.no_table:
         print_scan_table(rows, min_score=args.min_score)

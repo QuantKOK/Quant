@@ -143,3 +143,22 @@ def test_validated_json_is_structured_and_csv_is_compact_json(tmp_path):
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         record = next(csv.DictReader(handle))
     assert json.loads(record["validated_sec_flags"])["has_going_concern"] is True
+
+
+def test_main_forwards_sec_validation_ttl_to_scan_tickers(monkeypatch):
+    import app.scan as scan_module
+
+    captured = {}
+
+    def fake_scan_tickers(tickers, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(scan_module, "scan_tickers", fake_scan_tickers)
+
+    rc = scan_module.main(
+        ["MRNA", "--no-table", "--validate-sec-text", "--sec-validation-cache-ttl-days", "15"]
+    )
+
+    assert rc == 0
+    assert captured["sec_validation_ttl_days"] == 15
