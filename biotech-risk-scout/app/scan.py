@@ -65,6 +65,7 @@ def build_scan_row(
     validate_sec_text: bool = False,
     max_sec_documents: int = 3,
     sec_validation_cache: str | None = None,
+    sec_validation_ttl_days: int = 30,
 ) -> dict[str, Any]:
     """Fetch sources, build a card, and score one ticker."""
     filings = fetch_sec_filings(ticker)
@@ -73,6 +74,7 @@ def build_scan_row(
             filings,
             max_documents=max_sec_documents,
             cache_path=sec_validation_cache,
+            ttl_days=sec_validation_ttl_days,
         )
         if validate_sec_text
         else None
@@ -127,6 +129,7 @@ def scan_tickers(
     validate_sec_text: bool = False,
     max_sec_documents: int = 3,
     sec_validation_cache: str | None = None,
+    sec_validation_ttl_days: int = 30,
 ) -> list[dict[str, Any]]:
     """Scan tickers concurrently and return ranked rows.
 
@@ -149,6 +152,7 @@ def scan_tickers(
                 validate_sec_text,
                 max_sec_documents,
                 sec_validation_cache,
+                sec_validation_ttl_days,
             ): ticker
             for ticker in tickers
         }

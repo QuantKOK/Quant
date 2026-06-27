@@ -112,7 +112,7 @@ Create a markdown alert report from a comparison:
 python biotech-risk-scout/app/scan.py --compare-snapshots snapshots/scan-20260624.json snapshots/scan-20260625.json --alert-report alerts/latest-alerts.md
 ```
 
-The alert report summarizes biggest score moves, new names surfaced, removed names, and names that need manual inspection.
+The alert report opens with an **Operator Brief** — a plain-English daily summary listing the scan date, counts of new/removed/score-changed names, how many names have validated SEC filing-text flags, the highest-priority name, and the biggest positive and negative score moves. Below the brief it details biggest score moves, new names surfaced, removed names, names that need manual inspection, and validated SEC filing-text flags when present. The brief is diligence triage only, not investment advice.
 
 Run the local daily watchlist scan:
 
@@ -125,12 +125,31 @@ python biotech-risk-scout/scripts/run_daily_scan.py --no-table
 Run the daily scan with capped SEC filing-text validation and the persistent cache:
 
 ```bash
-python biotech-risk-scout/scripts/run_daily_scan.py --no-table --validate-sec-text --max-sec-documents 2 --max-workers 4
+python biotech-risk-scout/scripts/run_daily_scan.py --no-table --validate-sec-text --max-sec-documents 2 --max-workers 4 --sec-validation-cache-ttl-days 30
 ```
+
+`--sec-validation-cache-ttl-days` (default 30) sets how long a cached validation result stays fresh before it is refetched; see **Optional Filing-Document Text Fetch** below for cache TTL and pruning details.
 
 The default watchlist lives at `biotech-risk-scout/watchlists/biotech-watchlist.txt`. The script writes CSV, JSON record exports, `scan-YYYYMMDD.json`, `latest.json`, and `latest-alerts.md` into `biotech-risk-scout/snapshots` by default. When a previous `latest.json` exists, it also writes `previous-latest.json` and `latest-comparison.json`.
 
 If every ticker scan fails, the runner exits nonzero without replacing existing outputs. Partial failures are reported to stderr while successful ticker results continue through exports and snapshots.
+
+### Alert report delivery (local only)
+
+After `latest-alerts.md` is generated, the daily runner can deliver a copy through safe, local-only channels. **No external sending exists yet** — there is no real email, Slack, or Discord integration. These options only print, copy files, or generate a digest file on the local machine.
+
+```bash
+# Print the alert report to stdout
+python biotech-risk-scout/scripts/run_daily_scan.py --no-table --print-alert-report
+
+# Archive a copy of the alert report into a folder (keeps the same filename)
+python biotech-risk-scout/scripts/run_daily_scan.py --no-table --archive-alert-report-dir biotech-risk-scout/alerts-archive
+
+# Write an email-style digest file (subject + body); no email is sent
+python biotech-risk-scout/scripts/run_daily_scan.py --no-table --write-email-digest biotech-risk-scout/alerts-archive/digest.txt
+```
+
+Delivery runs only after a successful scan and report generation. Each delivery action is best-effort: if one fails it prints a warning to stderr but does not change the daily-scan exit code (the scan still fails only when every ticker scan failed). The delivery abstraction lives in `scout/delivery/` (`ConsoleDelivery`, `FileArchiveDelivery`, and `build_email_digest`), built on a shared `AlertDelivery` interface so future channels (email, Slack, Discord, GitHub Issues) can be added without changing callers. The email digest preserves the markdown report and prepends a diligence-only header; it never sends anything.
 
 The scanner prints rank, ticker, score, catalyst, days, runway, dilution risk, evidence quality, trial count, main reason, and main risk.
 
@@ -173,6 +192,23 @@ python biotech-risk-scout/app/scan.py MRNA VKTX --validate-sec-text --max-sec-do
 
 Validated results are cached by filing-document URL in `biotech-risk-scout/.cache/sec-validation.json`, so later validation scans do not refetch unchanged filings. Use `--sec-validation-cache PATH` to place the cache elsewhere. Cache read/write failures are reported in `sec_validation_errors` and do not crash the scan.
 
+The cache is human-readable JSON. Each entry records `matched_flags`, the `cached_at` ISO timestamp, and the `source_url`:
+
+```json
+{
+  "version": 1,
+  "documents": {
+    "https://www.sec.gov/Archives/edgar/data/.../doc.htm": {
+      "cached_at": "2026-06-27T12:00:00+00:00",
+      "matched_flags": ["has_going_concern"],
+      "source_url": "https://www.sec.gov/Archives/edgar/data/.../doc.htm"
+    }
+  }
+}
+```
+
+**Cache TTL and pruning.** Cached entries are reused only while they are fresh. The default time-to-live is 30 days; control it with `--sec-validation-cache-ttl-days N` on the daily runner. A stale entry — or a legacy entry written before TTL support that has no `cached_at` — is treated as stale, refetched, and overwritten with a fresh entry. After a validated daily scan, the runner prunes stale entries from the cache and reports how many were removed. Pruning is also available programmatically via `prune_validation_cache(cache_path, ttl_days=30)`, which returns `{"before": X, "after": Y, "removed": Z}` and is safe on a missing or corrupt cache (it returns zero counts rather than raising).
+
 ## Tests
 
 Run offline unit tests with:
@@ -181,7 +217,7 @@ Run offline unit tests with:
 python -m pytest -q biotech-risk-scout/tests
 ```
 
-The current tests validate the first-pass SEC company-facts cash runway calculation, SEC financing/structural flag classification, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, snapshot comparison, markdown alert reports, daily-scan alert artifact helpers, score explanation formatting, and ClinicalTrials.gov sponsor fallback without depending on live SEC requests.
+The current tests validate the first-pass SEC company-facts cash runway calculation, SEC financing/structural flag classification, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, snapshot comparison, markdown alert reports, daily-scan alert artifact helpers, local alert-report delivery (console, file archive, and email-digest generation), SEC validation cache TTL freshness and pruning, score explanation formatting, and ClinicalTrials.gov sponsor fallback without depending on live SEC requests.
 
 ## GitHub Actions
 
@@ -191,4 +227,4 @@ Scheduled scans require a GitHub Actions repository secret named `SEC_USER_AGENT
 
 ## Next Engineering Step
 
-Add an optional notification delivery adapter for generated alert reports.
+Add optional Slack or Discord webhook delivery with secrets-based configuration.
