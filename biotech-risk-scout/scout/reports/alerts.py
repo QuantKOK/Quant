@@ -104,13 +104,19 @@ def _manual_review(comparison: dict[str, Any], max_items: int) -> list[str]:
 def _validated_sec_flags(comparison: dict[str, Any], max_items: int) -> list[str]:
     records = list(comparison.get("added_records", []))
     records.extend(item.get("new_record", {}) for item in comparison.get("changed", []))
-    lines = ["## Validated SEC filing text flags", ""]
-    rendered = 0
+    matched_records = []
     for record in records:
         flags = [name for name, matched in (record.get("validated_sec_flags") or {}).items() if matched]
         filings = [filing for filing in record.get("validated_sec_filings") or [] if filing.get("matched_flags")]
-        if not flags and not filings:
-            continue
+        if flags or filings:
+            matched_records.append((record, flags, filings))
+
+    if not matched_records:
+        return []
+
+    lines = ["## Validated SEC filing text flags", ""]
+    rendered = 0
+    for record, flags, filings in matched_records:
         lines.append(f"- **{record.get('ticker', '?')}**: heuristic match in filing text; requires human review ({', '.join(flags)}).")
         for filing in filings:
             label = f"{filing.get('form') or 'filing'} {filing.get('filing_date') or ''}".strip()
@@ -118,8 +124,6 @@ def _validated_sec_flags(comparison: dict[str, Any], max_items: int) -> list[str
         rendered += 1
         if rendered >= max_items:
             break
-    if not rendered:
-        lines.append("No validated filing-text matches for new or changed tickers.")
     lines.append("")
     return lines
 

@@ -26,6 +26,7 @@ from app.scan import (  # noqa: E402
     print_scan_table,
     scan_tickers,
 )
+from scout.ingest.sec_validation import DEFAULT_SEC_VALIDATION_CACHE  # noqa: E402
 from scout.reports.alerts import write_alert_report  # noqa: E402
 from scout.storage.snapshots import compare_snapshots, load_snapshot  # noqa: E402
 
@@ -60,7 +61,30 @@ def run_scan(args: argparse.Namespace, output_dir: str) -> int:
         return 1
 
     print(f"Scanning {len(tickers)} tickers …", file=sys.stderr)
-    rows = scan_tickers(tickers, max_workers=args.max_workers)
+    rows = scan_tickers(
+        tickers,
+        max_workers=args.max_workers,
+        validate_sec_text=getattr(args, "validate_sec_text", False),
+        max_sec_documents=max(0, getattr(args, "max_sec_documents", 2)),
+        sec_validation_cache=getattr(args, "sec_validation_cache", None),
+    )
+
+    failed = [row for row in rows if row.get("card") is None]
+    successful = [row for row in rows if row.get("card") is not None]
+    for row in failed:
+        priority = row.get("priority")
+        detail = getattr(priority, "red_flag_summary", "unknown error")
+        print(
+            f"WARNING: {row.get('ticker', '?')} scan failed — {detail}",
+            file=sys.stderr,
+        )
+
+    if not rows or not successful:
+        print(
+            "All ticker scans failed; existing snapshots and exports were not replaced.",
+            file=sys.stderr,
+        )
+        return 1
 
     if not args.no_table:
         print_scan_table(rows, min_score=args.min_score)
@@ -128,6 +152,18 @@ def build_command(args: argparse.Namespace) -> list[str]:
     ]
     if args.no_table:
         command.append("--no-table")
+    if getattr(args, "validate_sec_text", False):
+        command.extend(
+            [
+                "--validate-sec-text",
+                "--max-sec-documents",
+                str(getattr(args, "max_sec_documents", 3)),
+                "--sec-validation-cache",
+                os.path.abspath(
+                    getattr(args, "sec_validation_cache", DEFAULT_SEC_VALIDATION_CACHE)
+                ),
+            ]
+        )
     return command
 
 
@@ -148,7 +184,31 @@ def main(argv=None) -> int:
     parser.add_argument("--date", help="Optional YYYYMMDD date stamp for deterministic output filenames")
     parser.add_argument("--no-table", action="store_true", help="Suppress table output")
     parser.add_argument("--max-workers", type=int, default=8, help="Max concurrent ticker fetches (default: 8)")
+    parser.add_argument(
+        "--validate-sec-text",
+        action="store_true",
+        help="Validate selected high-risk SEC flags against filing text",
+    )
+    parser.add_argument(
+        "--max-sec-documents",
+        type=int,
+        default=2,
+        help="Maximum SEC documents to validate per ticker (default: 2)",
+    )
+    parser.add_argument(
+        "--sec-validation-cache",
+        default=DEFAULT_SEC_VALIDATION_CACHE,
+        help="Persistent SEC validation cache path",
+    )
     args = parser.parse_args(argv)
+
+    if not os.environ.get("SEC_USER_AGENT", "").strip():
+        print(
+            "SEC_USER_AGENT is required. Set it to an application name and monitored contact "
+            "before running the daily scanner.",
+            file=sys.stderr,
+        )
+        return 1
 
     if not os.path.exists(args.tickers_file):
         print(f"Watchlist file not found: {args.tickers_file}", file=sys.stderr)

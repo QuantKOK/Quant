@@ -43,6 +43,7 @@ def test_build_alert_report_contains_core_sections():
     assert "## Removed Names" in report
     assert "**BBB**" in report
     assert "## Names To Inspect Manually" in report
+    assert "Validated SEC filing text flags" not in report
     assert "days until event: 90 → 45" in report
 
 
@@ -68,3 +69,19 @@ def test_alert_report_renders_validated_sec_flags():
     assert "heuristic match" in report
     assert "requires human review" in report
     assert "https://sec.test/filing" in report
+
+
+def test_alert_report_omits_sec_section_when_flags_are_false():
+    comparison = sample_comparison()
+    comparison["changed"][0]["new_record"] = {
+        "ticker": "AAA",
+        "validated_sec_flags": {
+            "has_going_concern": False,
+            "has_reverse_split": False,
+        },
+        "validated_sec_filings": [],
+    }
+
+    report = build_alert_report(comparison)
+
+    assert "## Validated SEC filing text flags" not in report
