@@ -136,7 +136,7 @@ If every ticker scan fails, the runner exits nonzero without replacing existing 
 
 ### Alert report delivery (local only)
 
-After `latest-alerts.md` is generated, the daily runner can deliver a copy through safe, local-only channels. **No external sending exists yet** — there is no real email, Slack, or Discord integration. These options only print, copy files, or generate a digest file on the local machine.
+After `latest-alerts.md` is generated, the daily runner can deliver a copy through safe, local-only channels. These options only print, copy files, or generate a digest file on the local machine and never contact an external service. An opt-in Discord webhook channel is documented separately in **Discord webhook delivery** below; it is the only channel that makes a network call, and only when you explicitly pass a Discord flag.
 
 ```bash
 # Print the alert report to stdout
@@ -149,7 +149,29 @@ python biotech-risk-scout/scripts/run_daily_scan.py --no-table --archive-alert-r
 python biotech-risk-scout/scripts/run_daily_scan.py --no-table --write-email-digest biotech-risk-scout/alerts-archive/digest.txt
 ```
 
-Delivery runs only after a successful scan and report generation. Each delivery action is best-effort: if one fails it prints a warning to stderr but does not change the daily-scan exit code (the scan still fails only when every ticker scan failed). The delivery abstraction lives in `scout/delivery/` (`ConsoleDelivery`, `FileArchiveDelivery`, and `build_email_digest`), built on a shared `AlertDelivery` interface so future channels (email, Slack, Discord, GitHub Issues) can be added without changing callers. The email digest preserves the markdown report and prepends a diligence-only header; it never sends anything.
+Delivery runs only after a successful scan and report generation. Each delivery action is best-effort: if one fails it prints a warning to stderr but does not change the daily-scan exit code (the scan still fails only when every ticker scan failed). The delivery abstraction lives in `scout/delivery/` (`ConsoleDelivery`, `FileArchiveDelivery`, `build_email_digest`, and `DiscordWebhookDelivery`), built on a shared `AlertDelivery` interface so future channels (email, Slack, GitHub Issues) can be added without changing callers. The email digest preserves the markdown report and prepends a diligence-only header; it never sends anything.
+
+### Discord webhook delivery (opt-in)
+
+The daily runner can post a compact alert summary to a Discord channel via an incoming webhook. This is **opt-in** and makes a network call only when you pass a Discord flag — default scans never contact Discord.
+
+```bash
+DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..." \
+  python biotech-risk-scout/scripts/run_daily_scan.py --validate-sec-text --discord-webhook-env DISCORD_WEBHOOK_URL
+```
+
+Two ways to supply the webhook:
+
+* `--discord-webhook-env NAME` — read the webhook URL from the environment variable `NAME` (recommended). If the variable is missing or empty, the runner prints a warning and skips Discord delivery.
+* `--discord-webhook-url URL` — pass the URL directly (discouraged, since it can land in shell history and process listings).
+
+Notes:
+
+* Store the webhook URL as a secret/environment variable; never commit it. Webhook URLs are not hardcoded anywhere in the project.
+* No Discord message is sent unless a Discord flag is passed.
+* The posted message contains a short header, the Operator Brief (if present), and a diligence-only disclaimer. It is truncated to stay under Discord's 2000-character limit; the full report remains in `latest-alerts.md` and the uploaded artifacts.
+* The webhook URL is never written to logs, results, or error messages — failure messages redact it.
+* A Discord network failure returns a failed `DeliveryResult` and prints a warning; it does not change the daily-scan exit code.
 
 The scanner prints rank, ticker, score, catalyst, days, runway, dilution risk, evidence quality, trial count, main reason, and main risk.
 
@@ -217,7 +239,7 @@ Run offline unit tests with:
 python -m pytest -q biotech-risk-scout/tests
 ```
 
-The current tests validate the first-pass SEC company-facts cash runway calculation, SEC financing/structural flag classification, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, snapshot comparison, markdown alert reports, daily-scan alert artifact helpers, local alert-report delivery (console, file archive, and email-digest generation), SEC validation cache TTL freshness and pruning, score explanation formatting, and ClinicalTrials.gov sponsor fallback without depending on live SEC requests.
+The current tests validate the first-pass SEC company-facts cash runway calculation, SEC financing/structural flag classification, the research card output, the research-priority scoring rubric, scanner CSV/JSON exports, ticker-file parsing, scan snapshot writing, snapshot comparison, markdown alert reports, daily-scan alert artifact helpers, local alert-report delivery (console, file archive, and email-digest generation), Discord webhook delivery (message building, payload POST, URL redaction, and env-based opt-in — all with mocked network), SEC validation cache TTL freshness and pruning, score explanation formatting, and ClinicalTrials.gov sponsor fallback without depending on live SEC or Discord requests.
 
 ## GitHub Actions
 
@@ -225,6 +247,8 @@ The smoke workflow compiles the project and runs all offline tests on pushes tou
 
 Scheduled scans require a GitHub Actions repository secret named `SEC_USER_AGENT`. Set it to a descriptive application name plus a monitored contact email, following the SEC guidance above. The workflow fails early with a clear error when the secret is missing rather than sending requests with an anonymous placeholder.
 
+Discord delivery is not enabled in the workflow by default. To turn it on, add a repository secret (for example `DISCORD_WEBHOOK_URL`) and extend the scheduled scan step with `env: DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}` plus `--discord-webhook-env DISCORD_WEBHOOK_URL`. Without the secret and flag, no Discord message is sent.
+
 ## Next Engineering Step
 
-Add optional Slack or Discord webhook delivery with secrets-based configuration.
+Add GitHub Actions optional Discord delivery using a repository secret.
