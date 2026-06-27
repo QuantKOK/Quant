@@ -62,13 +62,13 @@ python biotech-risk-scout/app/main.py MRNA
 Scan and rank multiple tickers:
 
 ```bash
-python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP
+python biotech-risk-scout/app/scan.py MRNA VKTX FLNA PRAX CRSP
 ```
 
 Print score explanations after scanning:
 
 ```bash
-python biotech-risk-scout/app/scan.py MRNA VKTX SAVA --explain
+python biotech-risk-scout/app/scan.py MRNA VKTX FLNA --explain
 ```
 
 The explanation shows each ticker's 0-100 score, component breakdown, main reason, red flags, and key inputs used.
@@ -84,8 +84,8 @@ Watchlist files can use newlines, commas, spaces, blank lines, and `#` comments.
 Export scan results:
 
 ```bash
-python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP --json scan.json
-python biotech-risk-scout/app/scan.py MRNA VKTX SAVA PRAX CRSP --csv scan.csv
+python biotech-risk-scout/app/scan.py MRNA VKTX FLNA PRAX CRSP --json scan.json
+python biotech-risk-scout/app/scan.py MRNA VKTX FLNA PRAX CRSP --csv scan.csv
 python biotech-risk-scout/app/scan.py --tickers-file biotech-watchlist.txt --csv scan.csv --json scan.json --no-table
 ```
 
@@ -120,7 +120,17 @@ Run the local daily watchlist scan:
 python biotech-risk-scout/scripts/run_daily_scan.py --no-table
 ```
 
+`SEC_USER_AGENT` must be set before running the daily scanner; see **SEC EDGAR Setup** above. The runner exits with a clear error when it is missing.
+
+Run the daily scan with capped SEC filing-text validation and the persistent cache:
+
+```bash
+python biotech-risk-scout/scripts/run_daily_scan.py --no-table --validate-sec-text --max-sec-documents 2 --max-workers 4
+```
+
 The default watchlist lives at `biotech-risk-scout/watchlists/biotech-watchlist.txt`. The script writes CSV, JSON record exports, `scan-YYYYMMDD.json`, `latest.json`, and `latest-alerts.md` into `biotech-risk-scout/snapshots` by default. When a previous `latest.json` exists, it also writes `previous-latest.json` and `latest-comparison.json`.
+
+If every ticker scan fails, the runner exits nonzero without replacing existing outputs. Partial failures are reported to stderr while successful ticker results continue through exports and snapshots.
 
 The scanner prints rank, ticker, score, catalyst, days, runway, dilution risk, evidence quality, trial count, main reason, and main risk.
 
@@ -175,8 +185,10 @@ The current tests validate the first-pass SEC company-facts cash runway calculat
 
 ## GitHub Actions
 
-The smoke workflow compiles the project and runs all offline tests on pushes touching Biotech Risk Scout. It also supports manual runs and a weekday scheduled scan that restores the previous `biotech-risk-scout/snapshots` cache, runs the daily scanner, saves the new cache, and uploads snapshot, CSV, JSON, comparison, and alert-report artifacts.
+The smoke workflow compiles the project and runs all offline tests on pushes touching Biotech Risk Scout. It also supports manual runs and a weekday scheduled scan that restores previous snapshots and SEC validation results, runs the daily scanner with validation capped at two selected documents per ticker, saves the updated caches, and uploads snapshot, CSV, JSON, comparison, and alert-report artifacts.
+
+Scheduled scans require a GitHub Actions repository secret named `SEC_USER_AGENT`. Set it to a descriptive application name plus a monitored contact email, following the SEC guidance above. The workflow fails early with a clear error when the secret is missing rather than sending requests with an anonymous placeholder.
 
 ## Next Engineering Step
 
-Add cache expiry and pruning controls for stale SEC filing-text validation entries.
+Add an optional notification delivery adapter for generated alert reports.

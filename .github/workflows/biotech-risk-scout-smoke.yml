@@ -43,24 +43,44 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Restore previous scan snapshot
+      - name: Validate SEC user-agent secret
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          if [ -z "$SEC_USER_AGENT" ]; then
+            echo "::error::Configure the SEC_USER_AGENT repository secret before running scheduled scans."
+            exit 1
+          fi
+
+      - name: Restore previous scan snapshot and validation cache
         uses: actions/cache/restore@v4
         with:
-          path: biotech-risk-scout/snapshots
+          path: |
+            biotech-risk-scout/snapshots
+            biotech-risk-scout/.cache
           key: biotech-risk-scout-snapshots-${{ github.run_id }}
           restore-keys: |
             biotech-risk-scout-snapshots-
 
       - name: Run daily scan
         env:
-          SEC_USER_AGENT: BiotechRiskScout
-        run: python biotech-risk-scout/scripts/run_daily_scan.py --no-table --output-dir biotech-risk-scout/snapshots
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          python biotech-risk-scout/scripts/run_daily_scan.py \
+            --no-table \
+            --max-workers 4 \
+            --output-dir biotech-risk-scout/snapshots \
+            --validate-sec-text \
+            --max-sec-documents 2 \
+            --sec-validation-cache biotech-risk-scout/.cache/sec-validation.json
 
-      - name: Save latest scan snapshot cache
+      - name: Save latest scan snapshot and validation cache
         uses: actions/cache/save@v4
         if: always()
         with:
-          path: biotech-risk-scout/snapshots
+          path: |
+            biotech-risk-scout/snapshots
+            biotech-risk-scout/.cache
           key: biotech-risk-scout-snapshots-${{ github.run_id }}
 
       - name: Upload scan artifacts
