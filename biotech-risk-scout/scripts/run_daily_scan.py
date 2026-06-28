@@ -212,6 +212,30 @@ def deliver_alert_report(args: argparse.Namespace, output_dir: str) -> list[Deli
     return results
 
 
+def delivery_requirement_failed(
+    args: argparse.Namespace,
+    results: list[DeliveryResult],
+) -> bool:
+    """Return whether required alert delivery was absent or unsuccessful."""
+    if not getattr(args, "require_delivery", False):
+        return False
+    if not results:
+        print(
+            "ERROR: alert delivery was required, but no delivery channel completed.",
+            file=sys.stderr,
+        )
+        return True
+
+    failed = [result.channel for result in results if not result.ok]
+    if failed:
+        print(
+            f"ERROR: required alert delivery failed for: {', '.join(failed)}.",
+            file=sys.stderr,
+        )
+        return True
+    return False
+
+
 def _write_email_digest_file(digest_path: str, report_text: str) -> DeliveryResult:
     """Write an email-style digest file. No email is sent."""
     digest = build_email_digest(report_text)
@@ -334,6 +358,11 @@ def main(argv=None) -> int:
         "--discord-webhook-env",
         help="Name of an environment variable holding the Discord webhook URL (opt-in; nothing is sent without it)",
     )
+    parser.add_argument(
+        "--require-delivery",
+        action="store_true",
+        help="Return nonzero when requested alert delivery is absent or fails",
+    )
     args = parser.parse_args(argv)
 
     if not os.environ.get("SEC_USER_AGENT", "").strip():
@@ -357,7 +386,8 @@ def main(argv=None) -> int:
         return exit_code
 
     write_post_scan_alerts(output_dir, previous_snapshot)
-    deliver_alert_report(args, output_dir)
+    delivery_results = deliver_alert_report(args, output_dir)
+    delivery_failed = delivery_requirement_failed(args, delivery_results)
 
     if args.validate_sec_text and args.sec_validation_cache:
         counts = prune_validation_cache(args.sec_validation_cache, ttl_days=args.sec_validation_cache_ttl_days)
@@ -369,7 +399,7 @@ def main(argv=None) -> int:
                 file=sys.stderr,
             )
 
-    return 0
+    return 1 if delivery_failed else 0
 
 
 if __name__ == "__main__":

@@ -65,14 +65,23 @@ jobs:
       - name: Run daily scan
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          DISCORD_ARGS=()
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL is configured; requiring Discord alert delivery."
+            DISCORD_ARGS=(--discord-webhook-env DISCORD_WEBHOOK_URL --require-delivery)
+          else
+            echo "::notice::DISCORD_WEBHOOK_URL is not configured; skipping Discord delivery."
+          fi
           python biotech-risk-scout/scripts/run_daily_scan.py \
             --no-table \
             --max-workers 4 \
             --output-dir biotech-risk-scout/snapshots \
             --validate-sec-text \
             --max-sec-documents 2 \
-            --sec-validation-cache biotech-risk-scout/.cache/sec-validation.json
+            --sec-validation-cache biotech-risk-scout/.cache/sec-validation.json \
+            "${DISCORD_ARGS[@]}"
 
       - name: Save latest scan snapshot and validation cache
         uses: actions/cache/save@v4

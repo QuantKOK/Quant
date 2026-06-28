@@ -234,6 +234,7 @@ def _delivery_args(**kwargs):
         write_email_digest=None,
         discord_webhook_url=None,
         discord_webhook_env=None,
+        require_delivery=False,
     )
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
@@ -341,6 +342,58 @@ def test_daily_runner_uses_discord_env_when_present(monkeypatch, tmp_path):
     assert captured.get("delivered") is True
     assert [r.channel for r in results] == ["discord"]
     assert results[0].ok is True
+
+
+def test_required_delivery_fails_when_no_channel_completed(capsys):
+    failed = run_daily_scan.delivery_requirement_failed(
+        _delivery_args(require_delivery=True),
+        [],
+    )
+
+    assert failed is True
+    assert "no delivery channel completed" in capsys.readouterr().err
+
+
+def test_required_delivery_fails_when_channel_failed(capsys):
+    result = run_daily_scan.DeliveryResult(
+        channel="discord",
+        destination="webhook",
+        ok=False,
+        message="failed",
+    )
+
+    failed = run_daily_scan.delivery_requirement_failed(
+        _delivery_args(require_delivery=True),
+        [result],
+    )
+
+    assert failed is True
+    assert "discord" in capsys.readouterr().err
+
+
+def test_required_delivery_passes_when_channel_succeeded():
+    result = run_daily_scan.DeliveryResult(
+        channel="discord",
+        destination="webhook",
+        ok=True,
+        message="posted",
+    )
+
+    assert run_daily_scan.delivery_requirement_failed(
+        _delivery_args(require_delivery=True),
+        [result],
+    ) is False
+
+
+def test_delivery_failures_remain_best_effort_by_default():
+    result = run_daily_scan.DeliveryResult(
+        channel="discord",
+        destination="webhook",
+        ok=False,
+        message="failed",
+    )
+
+    assert run_daily_scan.delivery_requirement_failed(_delivery_args(), [result]) is False
 
 
 def test_main_runs_delivery_when_flags_set(monkeypatch, tmp_path, capsys):

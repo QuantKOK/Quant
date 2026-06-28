@@ -171,7 +171,7 @@ Notes:
 * No Discord message is sent unless a Discord flag is passed.
 * The posted message contains a short header, the Operator Brief (if present), and a diligence-only disclaimer. It is truncated to stay under Discord's 2000-character limit; the full report remains in `latest-alerts.md` and the uploaded artifacts.
 * The webhook URL is never written to logs, results, or error messages — failure messages redact it.
-* A Discord network failure returns a failed `DeliveryResult` and prints a warning; it does not change the daily-scan exit code.
+* A Discord network failure returns a failed `DeliveryResult` and prints a warning. Add `--require-delivery` when delivery failure should make the daily scan exit nonzero.
 
 The scanner prints rank, ticker, score, catalyst, days, runway, dilution risk, evidence quality, trial count, main reason, and main risk.
 
@@ -247,8 +247,8 @@ The smoke workflow compiles the project and runs all offline tests on pushes tou
 
 Scheduled scans require a GitHub Actions repository secret named `SEC_USER_AGENT`. Set it to a descriptive application name plus a monitored contact email, following the SEC guidance above. The workflow fails early with a clear error when the secret is missing rather than sending requests with an anonymous placeholder.
 
-Discord delivery is not enabled in the workflow by default. To turn it on, add a repository secret (for example `DISCORD_WEBHOOK_URL`) and extend the scheduled scan step with `env: DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}` plus `--discord-webhook-env DISCORD_WEBHOOK_URL`. Without the secret and flag, no Discord message is sent.
+Discord delivery is optional and controlled by the `DISCORD_WEBHOOK_URL` repository secret. When present, scheduled and manually dispatched scans deliver the Operator Brief to Discord and require delivery success. When absent, the workflow logs a notice, skips Discord, and still produces all scan artifacts. The secret value is passed only through the environment and is never printed.
 
 ## Next Engineering Step
 
-Add GitHub Actions optional Discord delivery using a repository secret.
+Add delivery observability and duplicate-notification suppression.
