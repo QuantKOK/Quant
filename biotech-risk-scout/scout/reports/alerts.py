@@ -45,7 +45,7 @@ def write_alert_report(comparison: dict[str, Any], path: str, max_items: int = 1
 
 
 def _operator_brief(comparison: dict[str, Any]) -> list[str]:
-    """Build a plain-English operator brief summarizing what changed today.
+    """Build a plain-English operator brief summarizing current scan state.
 
     Robust to missing or partial comparison fields. Uses neutral diligence
     language only — this is a triage summary, not investment advice.
@@ -53,25 +53,37 @@ def _operator_brief(comparison: dict[str, Any]) -> list[str]:
     added = comparison.get("added") or []
     removed = comparison.get("removed") or []
     changed = comparison.get("changed") or []
+    current = comparison.get("current_summary")
+    has_current = isinstance(current, dict)
 
     scan_date = str(comparison.get("new_generated_at") or "")[:10] or "unknown"
     score_changed = [item for item in changed if item.get("old_score") != item.get("new_score")]
-    sec_flag_count = _count_validated_sec_flag_records(comparison)
+    if has_current and "validated_sec_flag_count" in current:
+        sec_flag_count = current.get("validated_sec_flag_count") or 0
+    else:
+        sec_flag_count = _count_validated_sec_flag_records(comparison)
 
-    lines = [
-        "## Operator Brief",
-        "",
-        f"- Scan date: {scan_date}",
-        f"- New names surfaced: {len(added)}",
-        f"- Removed names: {len(removed)}",
-        f"- Names with score changes: {len(score_changed)}",
-        f"- Names with validated SEC filing-text flags: {sec_flag_count}",
-    ]
+    lines = ["## Operator Brief", "", f"- Scan date: {scan_date}"]
+    if has_current and current.get("record_count") is not None:
+        lines.append(f"- Tickers in current scan: {current.get('record_count')}")
+    lines.extend(
+        [
+            f"- New names surfaced: {len(added)}",
+            f"- Removed names: {len(removed)}",
+            f"- Names with score changes: {len(score_changed)}",
+            f"- Names with validated SEC filing-text flags: {sec_flag_count}",
+        ]
+    )
 
-    highest = _highest_priority_record(comparison)
+    highest = _resolve_highest_priority(comparison)
     if highest is not None:
         ticker, score = highest
         lines.append(f"- Highest priority name: {ticker}, score {score}")
+
+    if has_current and current.get("failed_count"):
+        names = ", ".join(current.get("failed_tickers") or [])
+        suffix = f" ({names})" if names else ""
+        lines.append(f"- Failed tickers: {current.get('failed_count')}{suffix}")
 
     if score_changed:
         positive = max(score_changed, key=_score_delta)
@@ -101,6 +113,18 @@ def _count_validated_sec_flag_records(comparison: dict[str, Any]) -> int:
         if isinstance(flags, dict) and any(bool(value) for value in flags.values()):
             count += 1
     return count
+
+
+def _resolve_highest_priority(comparison: dict[str, Any]) -> tuple[str, int] | None:
+    """Resolve highest priority from current state, with legacy fallback."""
+    current = comparison.get("current_summary")
+    if isinstance(current, dict):
+        ticker = current.get("highest_priority_ticker")
+        score = current.get("highest_priority_score")
+        if ticker is not None and score is not None:
+            return str(ticker), _safe_int(score)
+        return None
+    return _highest_priority_record(comparison)
 
 
 def _highest_priority_record(comparison: dict[str, Any]) -> tuple[str, int] | None:

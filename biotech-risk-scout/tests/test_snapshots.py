@@ -86,6 +86,54 @@ def test_compare_snapshots_tracks_added_removed_and_changed():
     }
 
 
+def test_compare_snapshots_includes_current_summary():
+    old = build_snapshot_payload([], timestamp="2026-06-26T12:00:00+00:00")
+    new = build_snapshot_payload(
+        [
+            {
+                "ticker": "AAA",
+                "score": 80,
+                "main_reason": "Near-term catalyst",
+                "validated_sec_flags": {"has_going_concern": True},
+            },
+            {
+                "ticker": "BBB",
+                "score": 40,
+                "main_reason": "Clean cap structure",
+                "validated_sec_flags": {"has_reverse_split": False},
+            },
+            {"ticker": "FAIL", "score": 0, "main_reason": "SEC ingestion failed"},
+        ],
+        timestamp="2026-06-27T12:00:00+00:00",
+    )
+
+    summary = compare_snapshots(old, new)["current_summary"]
+
+    assert summary == {
+        "record_count": 3,
+        "highest_priority_ticker": "AAA",
+        "highest_priority_score": 80,
+        "validated_sec_flag_count": 1,
+        "failed_count": 1,
+        "failed_tickers": ["FAIL"],
+    }
+
+
+def test_current_summary_does_not_guess_failures_from_incidental_words():
+    record = {
+        "ticker": "AAA",
+        "score": 55,
+        "main_reason": "Trial failure requires diligence",
+    }
+    comparison = compare_snapshots(
+        build_snapshot_payload([], timestamp="old"),
+        build_snapshot_payload([record], timestamp="new"),
+    )
+
+    assert comparison["current_summary"]["failed_count"] == 0
+    assert comparison["current_summary"]["highest_priority_ticker"] == "AAA"
+
+
 def test_format_snapshot_comparison_outputs_readable_report():
     comparison = {
         "old_generated_at": "old",

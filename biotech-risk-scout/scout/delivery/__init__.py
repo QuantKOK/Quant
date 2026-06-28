@@ -1,9 +1,8 @@
-"""Local-only delivery layer for generated alert reports.
+"""Delivery layer for generated alert reports.
 
-Supported channels are safe and offline: console/stdout, file archive, and
-email-style digest generation (which builds text only and sends nothing). The
-``AlertDelivery`` interface lets future channels (email, Slack, Discord, GitHub
-Issues, etc.) be added without changing existing callers.
+Most channels are local and offline. Discord webhook delivery additionally makes
+a network call only when explicitly configured. The shared interface lets
+further channels be added without changing existing callers.
 """
 
 from scout.delivery.base import AlertDelivery, DeliveryResult

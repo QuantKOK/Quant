@@ -17,6 +17,8 @@ from scout.delivery import (  # noqa: E402
     build_email_digest,
 )
 from scout.delivery import discord as discord_module  # noqa: E402
+from scout.reports.alerts import build_alert_report  # noqa: E402
+from scout.storage.snapshots import build_snapshot_payload, compare_snapshots  # noqa: E402
 
 SAMPLE_REPORT = "# Biotech Risk Scout Alerts\n\n## Summary\n\n- Added tickers: **1**\n"
 
@@ -202,3 +204,22 @@ def test_discord_delivery_http_error_is_failure(monkeypatch):
     assert result.ok is False
     assert "404" in result.message
     assert "discord.test" not in result.message
+
+
+def test_discord_message_inherits_current_state_operator_brief():
+    records = [
+        {
+            "ticker": "AAA",
+            "score": 88,
+            "main_reason": "Near-term catalyst",
+            "validated_sec_flags": {"has_going_concern": True},
+        }
+    ]
+    old = build_snapshot_payload(records, timestamp="2026-06-26T12:00:00+00:00")
+    new = build_snapshot_payload(records, timestamp="2026-06-27T12:00:00+00:00")
+    report = build_alert_report(compare_snapshots(old, new))
+
+    message = build_discord_message(report)
+
+    assert "Highest priority name: AAA, score 88" in message
+    assert "Names with validated SEC filing-text flags: 1" in message
