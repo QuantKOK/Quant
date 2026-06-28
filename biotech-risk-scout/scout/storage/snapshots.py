@@ -9,6 +9,7 @@ from typing import Any
 
 
 SNAPSHOT_DATE_FORMAT = "%Y%m%d"
+FAILED_MAIN_REASONS = {"sec ingestion failed", "fetch error"}
 
 
 def utc_timestamp() -> str:
@@ -109,7 +110,51 @@ def compare_snapshots(old_snapshot: dict[str, Any], new_snapshot: dict[str, Any]
             "removed_count": len(removed),
             "changed_count": len(changed),
         },
+        "current_summary": _build_current_summary(new_snapshot.get("records", []) or []),
     }
+
+
+def _build_current_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize all records in the current snapshot, including unchanged ones."""
+    failed_tickers: list[str] = []
+    validated_flag_count = 0
+    highest_ticker: str | None = None
+    highest_score: float | None = None
+
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        ticker = record.get("ticker")
+        if _is_failed_record(record):
+            if ticker:
+                failed_tickers.append(str(ticker))
+            continue
+
+        flags = record.get("validated_sec_flags")
+        if isinstance(flags, dict) and any(bool(value) for value in flags.values()):
+            validated_flag_count += 1
+
+        score = record.get("score")
+        if ticker is not None and score is not None:
+            score_value = _safe_number(score, 0)
+            if highest_score is None or score_value > highest_score:
+                highest_score = score_value
+                highest_ticker = str(ticker)
+
+    return {
+        "record_count": len(records),
+        "highest_priority_ticker": highest_ticker,
+        "highest_priority_score": int(highest_score) if highest_score is not None else None,
+        "validated_sec_flag_count": validated_flag_count,
+        "failed_count": len(failed_tickers),
+        "failed_tickers": failed_tickers,
+    }
+
+
+def _is_failed_record(record: dict[str, Any]) -> bool:
+    """Return whether a record is one of the scanner's explicit error rows."""
+    reason = str(record.get("main_reason", "")).strip().lower()
+    return reason in FAILED_MAIN_REASONS
 
 
 def format_snapshot_comparison(comparison: dict[str, Any], max_changes: int = 20) -> str:

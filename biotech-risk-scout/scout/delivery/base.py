@@ -1,8 +1,8 @@
 """Base abstractions for the alert-report delivery layer.
 
-This layer is intentionally local-only. Nothing in ``scout.delivery`` sends data
-to an external service yet. The interface is designed so future channels (email,
-Slack, Discord, GitHub Issues, etc.) can be added without changing callers.
+Most channels are local and offline. The Discord webhook channel makes a network
+call only when explicitly configured. The interface lets further channels be
+added without changing callers.
 """
 
 from __future__ import annotations
