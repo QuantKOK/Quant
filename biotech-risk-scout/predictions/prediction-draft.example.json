@@ -1,0 +1,28 @@
+{
+  "evidence_as_of": "2026-06-30T12:00:00+00:00",
+  "model_version": "baseline-v0.1",
+  "target": {
+    "nct_id": "NCT01234567",
+    "sponsor": "Example Biotech",
+    "trial_title": "Example pivotal study",
+    "phase": "Phase 3",
+    "therapeutic_area": "Neurology",
+    "primary_endpoint": "Change from baseline at Week 24",
+    "estimated_completion_date": "2027-03"
+  },
+  "prediction": {
+    "probability_of_success": 0.35,
+    "outcome_definition": "Trial meets its prespecified primary endpoint with acceptable safety",
+    "forecast_horizon_date": "2027-06-30"
+  },
+  "explanation": {
+    "risk_factors": [
+      "Small prior-study sample",
+      "Effect-size assumption exceeds comparable programs"
+    ],
+    "rationale": "Example only. Replace with a concise, evidence-linked scientific explanation.",
+    "evidence_urls": [
+      "https://clinicaltrials.gov/study/NCT01234567"
+    ]
+  }
+}
