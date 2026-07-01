@@ -1,6 +1,13 @@
-# Biotech Risk Scout
+# Biotech Risk Scout: Clinical-Trial Risk Intelligence
 
-This project is an early prototype of an AI Special Situations Research Agent focused on small-cap biotechnology companies. It aims to surface tickers with upcoming catalysts, analyze cash runway and potential dilution risk, and generate concise research cards summarizing why a situation is interesting and how it could go wrong.
+Biotech Risk Scout is becoming a clinical-development risk intelligence
+platform. Its primary product direction is an auditable probability that a
+clinical trial meets a prespecified outcome, accompanied by scientific risk
+factors, evidence links, and a tamper-evident timestamped track record.
+
+The existing SEC, ClinicalTrials.gov, scoring, snapshot, and alert capabilities
+remain useful input and monitoring infrastructure. The platform is a diligence
+and decision-support tool, not a buy/sell/hold stock picker.
 
 ## Current Status
 
@@ -19,6 +26,27 @@ The scanner can export ranked results to CSV and JSON for saved watchlists, spre
 A local daily-scan runner and weekday GitHub Actions schedule can run the default watchlist, restore the previous cached snapshot, save a new snapshot cache, generate alert reports when a prior snapshot exists, and upload snapshot artifacts.
 
 The cash-runway logic is still a first-pass heuristic. It should be reviewed against actual filings before being used for serious diligence.
+
+## Auditable Prediction Ledger
+
+`app/predictions.py` manages a tamper-evident JSONL ledger for forward
+clinical-trial predictions. Every record contains its predecessor's SHA-256
+hash, the prediction timestamp, evidence cutoff, model version, target outcome,
+probability, scientific rationale, risk factors, and evidence URLs.
+
+```bash
+# Copy and complete the example draft first
+python biotech-risk-scout/app/predictions.py append \
+  --input biotech-risk-scout/predictions/prediction-draft.json
+
+python biotech-risk-scout/app/predictions.py verify
+python biotech-risk-scout/app/predictions.py head
+```
+
+The local hash chain detects edits, insertions, and reordering. It becomes
+independently timestamped when the ledger commit and head hash are published
+before outcomes are known. Predictions are never silently edited; revisions are
+new records with new timestamps.
 
 ## Layout
 
@@ -251,4 +279,4 @@ Discord delivery is not enabled in the workflow by default. To turn it on, add a
 
 ## Next Engineering Step
 
-Add GitHub Actions optional Discord delivery using a repository secret.
+Define the first historical outcome dataset and baseline trial-success models so future predictions can be evaluated for calibration and lift.
