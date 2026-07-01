@@ -14,6 +14,7 @@ from scout.predictions import (  # type: ignore
     PredictionLedgerError,
     append_prediction,
     verify_ledger,
+    write_ledger_receipt,
 )
 
 
@@ -34,6 +35,11 @@ def main(argv=None) -> int:
 
     subparsers.add_parser("verify", help="Verify the full ledger hash chain")
     subparsers.add_parser("head", help="Print the current ledger head hash")
+    receipt_parser = subparsers.add_parser(
+        "receipt",
+        help="Write a portable receipt for the verified ledger",
+    )
+    receipt_parser.add_argument("--output", required=True, help="Receipt JSON path")
     args = parser.parse_args(argv)
 
     if args.command == "append":
@@ -50,6 +56,23 @@ def main(argv=None) -> int:
                     "prediction_id": record["prediction_id"],
                     "record_hash": record["record_hash"],
                     "ledger": os.path.abspath(args.ledger),
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "receipt":
+        try:
+            receipt = write_ledger_receipt(args.ledger, args.output)
+        except PredictionLedgerError as exc:
+            print(f"Receipt creation failed: {exc}", file=sys.stderr)
+            return 1
+        print(
+            json.dumps(
+                {
+                    **receipt,
+                    "receipt": os.path.abspath(args.output),
                 },
                 indent=2,
             )

@@ -12,9 +12,11 @@ from scout.predictions.ledger import (  # noqa: E402
     GENESIS_HASH,
     PredictionLedgerError,
     append_prediction,
+    build_ledger_receipt,
     build_prediction_record,
     canonical_json,
     verify_ledger,
+    write_ledger_receipt,
 )
 
 
@@ -246,3 +248,68 @@ def test_cli_append_verify_and_head(tmp_path, capsys):
 
     assert predictions_main(["--ledger", str(ledger), "head"]) == 0
     assert capsys.readouterr().out.strip() == verify_output["head_hash"]
+
+
+def test_build_receipt_captures_exact_valid_ledger(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    record = append_prediction(
+        str(ledger),
+        prediction_draft(),
+        created_at="2026-07-01T13:00:00+00:00",
+        prediction_id="prediction-1",
+    )
+
+    receipt = build_ledger_receipt(
+        str(ledger),
+        generated_at="2026-07-01T14:00:00+00:00",
+    )
+
+    import hashlib
+
+    assert receipt["record_count"] == 1
+    assert receipt["head_hash"] == record["record_hash"]
+    assert receipt["last_created_at"] == "2026-07-01T13:00:00+00:00"
+    assert receipt["ledger_sha256"] == hashlib.sha256(ledger.read_bytes()).hexdigest()
+    assert len(receipt["receipt_hash"]) == 64
+
+
+def test_receipt_rejects_invalid_ledger(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text('{"not":"a valid record"}\n', encoding="utf-8")
+
+    with pytest.raises(PredictionLedgerError, match="invalid ledger"):
+        build_ledger_receipt(str(ledger))
+
+
+def test_receipt_cannot_overwrite_ledger(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+
+    with pytest.raises(PredictionLedgerError, match="cannot overwrite"):
+        write_ledger_receipt(str(ledger), str(ledger))
+
+
+def test_cli_writes_receipt(tmp_path, capsys):
+    ledger = tmp_path / "ledger.jsonl"
+    receipt_path = tmp_path / "receipt.json"
+    append_prediction(
+        str(ledger),
+        prediction_draft(),
+        created_at="2026-07-01T13:00:00+00:00",
+        prediction_id="prediction-1",
+    )
+
+    assert predictions_main(
+        [
+            "--ledger",
+            str(ledger),
+            "receipt",
+            "--output",
+            str(receipt_path),
+        ]
+    ) == 0
+    output = json.loads(capsys.readouterr().out)
+    written = json.loads(receipt_path.read_text(encoding="utf-8"))
+
+    assert output["receipt"] == str(receipt_path)
+    assert output["receipt_hash"] == written["receipt_hash"]
+    assert written["record_count"] == 1
