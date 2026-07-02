@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 
 SCHEMA_VERSION = 1
+RECEIPT_VERSION = 1
 GENESIS_HASH = "0" * 64
 NCT_ID_PATTERN = re.compile(r"^NCT\d{8}$")
 _LEDGER_LOCK = threading.Lock()
@@ -233,6 +234,76 @@ def verify_ledger(ledger_path: str) -> dict[str, Any]:
         count=count,
         last_created_at=previous_created_at.isoformat() if previous_created_at else None,
     )
+
+
+def build_ledger_receipt(
+    ledger_path: str,
+    *,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    """Return a portable receipt for a valid ledger's exact byte content."""
+    ledger_path = os.path.abspath(ledger_path)
+    generated = _parse_timestamp(generated_at or _utc_now_iso(), "generated_at")
+
+    with _LEDGER_LOCK:
+        verification = verify_ledger(ledger_path)
+        if not verification["ok"]:
+            raise PredictionLedgerError(
+                "cannot create a receipt for an invalid ledger: "
+                + "; ".join(verification["errors"])
+            )
+        try:
+            with open(ledger_path, "rb") as handle:
+                ledger_bytes = handle.read()
+        except FileNotFoundError:
+            ledger_bytes = b""
+        except OSError as exc:
+            raise PredictionLedgerError(f"could not read ledger: {exc}") from exc
+
+    receipt = {
+        "receipt_version": RECEIPT_VERSION,
+        "generated_at": generated.isoformat(),
+        "record_count": verification["record_count"],
+        "head_hash": verification["head_hash"],
+        "last_created_at": verification["last_created_at"],
+        "ledger_sha256": hashlib.sha256(ledger_bytes).hexdigest(),
+    }
+    receipt["receipt_hash"] = hashlib.sha256(
+        canonical_json(receipt).encode("utf-8")
+    ).hexdigest()
+    return receipt
+
+
+def write_ledger_receipt(
+    ledger_path: str,
+    output_path: str,
+    *,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    """Atomically write a portable verification receipt as canonical JSON."""
+    ledger_path = os.path.abspath(ledger_path)
+    output_path = os.path.abspath(output_path)
+    if ledger_path == output_path:
+        raise PredictionLedgerError("receipt output cannot overwrite the ledger")
+
+    receipt = build_ledger_receipt(ledger_path, generated_at=generated_at)
+    output_dir = os.path.dirname(output_path)
+    os.makedirs(output_dir, exist_ok=True)
+    temporary_path = f"{output_path}.tmp-{uuid.uuid4()}"
+    try:
+        with open(temporary_path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(canonical_json(receipt))
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, output_path)
+    except OSError as exc:
+        try:
+            os.remove(temporary_path)
+        except OSError:
+            pass
+        raise PredictionLedgerError(f"could not write receipt: {exc}") from exc
+    return receipt
 
 
 def _verify_record_fields(
