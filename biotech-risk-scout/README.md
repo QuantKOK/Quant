@@ -48,6 +48,26 @@ independently timestamped when the ledger commit and head hash are published
 before outcomes are known. Predictions are never silently edited; revisions are
 new records with new timestamps.
 
+## Historical Outcome Dataset
+
+`app/outcomes.py` validates human-adjudicated trial outcomes, builds canonical
+JSONL, writes a SHA-256 manifest, and verifies the dataset against that
+manifest. Registry status and scientific outcome remain separate: a completed
+trial is not automatically successful, and a terminated trial is not
+automatically unsuccessful.
+
+```bash
+python biotech-risk-scout/app/outcomes.py build \
+  --source biotech-risk-scout/data/outcomes/example_source.jsonl \
+  --out biotech-risk-scout/data/outcomes/example_dataset.jsonl
+python biotech-risk-scout/app/outcomes.py verify \
+  --dataset biotech-risk-scout/data/outcomes/example_dataset.jsonl
+```
+
+The bundled records are synthetic and intended only to exercise the tooling.
+See [the outcome-dataset documentation](docs/historical_outcomes.md) for the
+label taxonomy, provenance rules, and point-in-time safeguards.
+
 ## Layout
 
 ```txt
@@ -57,6 +77,7 @@ biotech-risk-scout/
 ├── watchlists/        # Watchlist inputs
 ├── scout/
 │   ├── ingest/        # Data ingestion modules
+│   ├── outcomes/      # Historical outcome schema and dataset tooling
 │   ├── reports/       # Report and research card abstractions
 │   ├── scoring/       # Research-priority scoring
 │   └── storage/       # Snapshot/output storage helpers
@@ -279,4 +300,5 @@ Discord delivery is not enabled in the workflow by default. To turn it on, add a
 
 ## Next Engineering Step
 
-Define the first historical outcome dataset and baseline trial-success models so future predictions can be evaluated for calibration and lift.
+Adjudicate a real, versioned historical outcome cohort with cited evidence,
+then train transparent baseline models and measure calibration and lift.
