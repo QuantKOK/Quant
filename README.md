@@ -49,7 +49,14 @@ py -3 macroedge/app/contracts.py emit \
   --output macroedge/contract-observation.example.json \
   --observation-id example-contract-observation \
   --observed-at 2026-07-14T20:00:00-05:00
+
+# Re-verify an emitted observation record later
+py -3 macroedge/app/contracts.py verify \
+  --input macroedge/contract-observation.example.json
 ```
+
+Pass both `--observation-id` and `--observed-at` when you need a reproducible
+`contract_hash`; otherwise a fresh observation ID is generated.
 
 ### Trade journal (append-only, offline)
 

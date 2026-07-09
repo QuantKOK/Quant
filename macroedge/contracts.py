@@ -102,10 +102,59 @@ def build_contract_record(
     return record
 
 
+def verify_contract_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Verify an emitted contract observation record and return a summary."""
+    errors: list[str] = []
+    if not isinstance(record, dict):
+        return _verification_result(["record must be a JSON object"], None)
+
+    stored_hash = record.get("contract_hash")
+    if not isinstance(stored_hash, str) or not stored_hash:
+        errors.append("missing contract_hash")
+    elif stored_hash != _record_hash(record):
+        errors.append("contract_hash mismatch")
+
+    try:
+        rebuilt = build_contract_record(
+            _draft_from_record(record),
+            observed_at=record.get("observed_at") if isinstance(record.get("observed_at"), str) else None,
+            observation_id=record.get("observation_id") if isinstance(record.get("observation_id"), str) else None,
+        )
+    except ContractError as exc:
+        errors.append(f"schema violation: {exc}")
+    else:
+        if canonical_json(record) != canonical_json(rebuilt):
+            errors.append("record content does not match canonical contract record")
+
+    return _verification_result(errors, stored_hash if isinstance(stored_hash, str) else None)
+
+
 def _record_hash(record: dict[str, Any]) -> str:
     payload = dict(record)
     payload.pop("contract_hash", None)
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def _draft_from_record(record: dict[str, Any]) -> dict[str, Any]:
+    market = record.get("market")
+    if isinstance(market, dict):
+        market = dict(market)
+        market["status"] = record.get("status")
+    return {
+        "observed_at": record.get("observed_at"),
+        "event": record.get("event"),
+        "market": market,
+        "prices": record.get("prices"),
+        "notes": record.get("source", {}).get("notes") if isinstance(record.get("source"), dict) else "",
+    }
+
+
+def _verification_result(errors: list[str], contract_hash: str | None) -> dict[str, Any]:
+    return {
+        "ok": not errors,
+        "contract_hash": contract_hash,
+        "errors": errors,
+    }
 
 
 def _implied_probability_source(

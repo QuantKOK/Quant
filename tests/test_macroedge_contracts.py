@@ -1,10 +1,11 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from macroedge.app import contracts as contracts_cli
-from macroedge.contracts import ContractError, build_contract_record
+from macroedge.contracts import ContractError, build_contract_record, verify_contract_record
 
 
 EXAMPLE = Path("macroedge/examples/contract-draft.example.json")
@@ -85,6 +86,49 @@ def test_build_contract_record_rejects_non_iso_settlement_datetime():
         build_contract_record(draft)
 
 
+def test_verify_contract_record_accepts_emitted_record():
+    record = build_contract_record(
+        load_example(),
+        observation_id="verify-contract",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+
+    result = verify_contract_record(record)
+
+    assert result["ok"] is True
+    assert result["contract_hash"] == record["contract_hash"]
+    assert result["errors"] == []
+
+
+def test_verify_contract_record_detects_tampering():
+    record = build_contract_record(
+        load_example(),
+        observation_id="verify-contract",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    record["prices"]["yes_ask"] = 0.90
+
+    result = verify_contract_record(record)
+
+    assert result["ok"] is False
+    assert any("mismatch" in error for error in result["errors"])
+
+
+def test_verify_contract_record_preserves_non_default_status():
+    draft = load_example()
+    draft["market"]["status"] = "closed"
+    record = build_contract_record(
+        draft,
+        observation_id="closed-contract",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+
+    result = verify_contract_record(record)
+
+    assert record["status"] == "closed"
+    assert result["ok"] is True, result["errors"]
+
+
 def test_contract_cli_validate_and_emit(tmp_path, capsys):
     output = tmp_path / "contract-record.json"
 
@@ -123,6 +167,11 @@ def test_contract_cli_validate_and_emit(tmp_path, capsys):
     assert record["observation_id"] == "cli-contract"
     assert len(record["contract_hash"]) == 64
 
+    assert contracts_cli.main(["verify", "--input", str(output)]) == 0
+    verify_output = capsys.readouterr().out
+    assert '"ok": true' in verify_output
+    assert record["contract_hash"] in verify_output
+
 
 def test_contract_cli_validate_fails_on_bad_draft(tmp_path, capsys):
     bad = tmp_path / "bad-contract.json"
@@ -133,3 +182,44 @@ def test_contract_cli_validate_fails_on_bad_draft(tmp_path, capsys):
 
     assert contracts_cli.main(["validate", "--input", str(bad)]) == 1
     assert "validate failed" in capsys.readouterr().err
+
+
+def test_contract_cli_emit_cleans_temp_file_on_replace_failure(tmp_path, capsys, monkeypatch):
+    output = tmp_path / "contract-record.json"
+
+    def fail_replace(src, dst):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    assert contracts_cli.main(
+        [
+            "emit",
+            "--input",
+            str(EXAMPLE),
+            "--output",
+            str(output),
+            "--observation-id",
+            "cli-contract",
+            "--observed-at",
+            "2026-07-14T20:00:00-05:00",
+        ]
+    ) == 1
+
+    assert "emit failed" in capsys.readouterr().err
+    assert not output.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_contract_cli_verify_fails_on_tampered_record(tmp_path, capsys):
+    output = tmp_path / "contract-record.json"
+    record = build_contract_record(
+        load_example(),
+        observation_id="cli-contract",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    record["prices"]["yes_bid"] = 0.01
+    output.write_text(json.dumps(record), encoding="utf-8")
+
+    assert contracts_cli.main(["verify", "--input", str(output)]) == 1
+    assert '"ok": false' in capsys.readouterr().out
