@@ -66,8 +66,16 @@ def build_contract_record(
         "event": {
             "event_type": event_type,
             "name": _require_text(event, "name"),
-            "release_datetime": _require_text(event, "release_datetime"),
-            "settlement_datetime": _require_text(event, "settlement_datetime"),
+            "release_datetime": _require_iso_datetime(
+                event,
+                "release_datetime",
+                "event.release_datetime",
+            ),
+            "settlement_datetime": _require_iso_datetime(
+                event,
+                "settlement_datetime",
+                "event.settlement_datetime",
+            ),
             "settlement_source": _require_text(event, "settlement_source"),
             "settlement_rules": _require_text(event, "settlement_rules"),
         },
@@ -126,6 +134,12 @@ def _require_text(value: dict[str, Any], key: str) -> str:
     if not isinstance(item, str) or not item.strip():
         raise ContractError(f"{key} must be a non-empty string")
     return item.strip()
+
+
+def _require_iso_datetime(value: dict[str, Any], key: str, field: str) -> str:
+    text = _require_text(value, key)
+    _parse_timestamp(text, field)
+    return text
 
 
 def _optional_text(value: dict[str, Any], key: str, *, default: str) -> str:

@@ -60,12 +60,12 @@ def build_trade_candidate(
     thesis = _require_dict(draft, "thesis")
     risk = _require_dict(draft, "risk")
     review = _optional_dict(draft, "post_mortem")
-    contract_observation = _optional_contract_observation(draft)
 
     created = _parse_timestamp(created_at or _utc_now_iso(), "created_at")
     evidence_as_of = _parse_timestamp(_require_text(thesis, "evidence_as_of"), "thesis.evidence_as_of")
     if evidence_as_of > created:
         raise TradeJournalError("thesis.evidence_as_of cannot be later than created_at")
+    contract_observation = _optional_contract_observation(draft, created)
 
     event_type = _require_text(event, "event_type")
     if event_type not in SUPPORTED_EVENT_TYPES:
@@ -118,8 +118,16 @@ def build_trade_candidate(
         "event": {
             "event_type": event_type,
             "name": _require_text(event, "name"),
-            "release_datetime": _require_text(event, "release_datetime"),
-            "settlement_datetime": _require_text(event, "settlement_datetime"),
+            "release_datetime": _require_iso_datetime(
+                event,
+                "release_datetime",
+                "event.release_datetime",
+            ),
+            "settlement_datetime": _require_iso_datetime(
+                event,
+                "settlement_datetime",
+                "event.settlement_datetime",
+            ),
             "settlement_source": _require_text(event, "settlement_source"),
             "settlement_rules": _require_text(event, "settlement_rules"),
         },
@@ -184,7 +192,10 @@ def _optional_dict(value: dict[str, Any], key: str) -> dict[str, Any]:
     return item
 
 
-def _optional_contract_observation(value: dict[str, Any]) -> dict[str, Any] | None:
+def _optional_contract_observation(
+    value: dict[str, Any],
+    created_at: datetime,
+) -> dict[str, Any] | None:
     item = value.get("contract_observation")
     if item is None:
         return None
@@ -195,6 +206,8 @@ def _optional_contract_observation(value: dict[str, Any]) -> dict[str, Any] | No
         _require_text(item, "observed_at"),
         "contract_observation.observed_at",
     )
+    if observed_at > created_at:
+        raise TradeJournalError("contract_observation.observed_at cannot be later than created_at")
     contract_hash = _require_text(item, "contract_hash")
     if not HEX64_PATTERN.fullmatch(contract_hash):
         raise TradeJournalError("contract_observation.contract_hash must be a lowercase SHA-256 hex digest")
@@ -211,6 +224,12 @@ def _require_text(value: dict[str, Any], key: str) -> str:
     if not isinstance(item, str) or not item.strip():
         raise TradeJournalError(f"{key} must be a non-empty string")
     return item.strip()
+
+
+def _require_iso_datetime(value: dict[str, Any], key: str, field: str) -> str:
+    text = _require_text(value, key)
+    _parse_timestamp(text, field)
+    return text
 
 
 def _require_probability(value: dict[str, Any], key: str) -> float:

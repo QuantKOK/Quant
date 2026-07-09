@@ -66,3 +66,19 @@ def test_build_contract_record_rejects_bad_market_url():
 
     with pytest.raises(ContractError, match="market_url"):
         build_contract_record(draft)
+
+
+def test_build_contract_record_rejects_non_iso_release_datetime():
+    draft = load_example()
+    draft["event"]["release_datetime"] = "not-a-date"
+
+    with pytest.raises(ContractError, match="release_datetime"):
+        build_contract_record(draft)
+
+
+def test_build_contract_record_rejects_non_iso_settlement_datetime():
+    draft = load_example()
+    draft["event"]["settlement_datetime"] = "not-a-date"
+
+    with pytest.raises(ContractError, match="settlement_datetime"):
+        build_contract_record(draft)

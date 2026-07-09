@@ -1,7 +1,7 @@
 {
   "contract_observation": {
     "observation_id": "example-contract-observation",
-    "contract_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "contract_hash": "2e41d1d4d02eec340f239bc132ce13d889febfdc81ca1cef823809ef68788e64",
     "observed_at": "2026-07-14T20:00:00-05:00"
   },
   "event": {

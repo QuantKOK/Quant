@@ -50,6 +50,11 @@ contract observation's `observation_id`, `contract_hash`, and `observed_at`.
 Manual candidates remain valid without this reference, but linked candidates
 carry cleaner audit lineage from observed market to thesis to journal entry.
 
+For candidate edge math, `entry_price` and `fair_probability` must both be
+expressed for the selected `side` (`YES` or `NO`). The stored edge is gross of
+fees, spread, and slippage; the operating plan still requires a real-world
+8-10 percentage-point edge after those costs.
+
 ```bash
 # Validate a draft (see macroedge/examples/trade-draft.example.json)
 py -3 macroedge/app/journal.py validate \

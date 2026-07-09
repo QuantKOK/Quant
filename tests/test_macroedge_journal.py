@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from macroedge.contracts import build_contract_record
 from macroedge.app import journal as journal_cli
 from macroedge.journal import TradeJournalError, build_trade_candidate, canonical_json
 from macroedge.ledger import (
@@ -15,6 +16,7 @@ from macroedge.ledger import (
 
 
 EXAMPLE = Path("macroedge/examples/trade-draft.example.json")
+CONTRACT_EXAMPLE = Path("macroedge/examples/contract-draft.example.json")
 T1 = "2026-07-15T02:00:00+00:00"
 T2 = "2026-07-16T02:00:00+00:00"
 
@@ -25,6 +27,10 @@ def _write_ledger(path, records):
 
 def load_example():
     return json.loads(EXAMPLE.read_text(encoding="utf-8"))
+
+
+def load_contract_example():
+    return json.loads(CONTRACT_EXAMPLE.read_text(encoding="utf-8"))
 
 
 def test_build_trade_candidate_calculates_edge_and_hash():
@@ -62,6 +68,64 @@ def test_build_trade_candidate_rejects_bad_contract_hash():
     draft["contract_observation"]["contract_hash"] = "not-a-hash"
 
     with pytest.raises(TradeJournalError, match="contract_hash"):
+        build_trade_candidate(draft, created_at="2026-07-15T02:00:00+00:00")
+
+
+def test_build_trade_candidate_rejects_future_contract_observation():
+    draft = load_example()
+    draft["contract_observation"]["observed_at"] = "2026-07-16T02:00:00+00:00"
+
+    with pytest.raises(TradeJournalError, match="observed_at"):
+        build_trade_candidate(draft, created_at="2026-07-15T02:00:00+00:00")
+
+
+def test_trade_example_reference_matches_built_contract():
+    contract = build_contract_record(
+        load_contract_example(),
+        observation_id="example-contract-observation",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    draft = load_example()
+
+    assert draft["contract_observation"]["contract_hash"] == contract["contract_hash"]
+
+
+def test_end_to_end_contract_to_candidate_lineage():
+    contract = build_contract_record(
+        load_contract_example(),
+        observation_id="linked-contract",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    draft = load_example()
+    draft["contract_observation"] = {
+        "observation_id": contract["observation_id"],
+        "contract_hash": contract["contract_hash"],
+        "observed_at": contract["observed_at"],
+    }
+
+    candidate = build_trade_candidate(
+        draft,
+        created_at="2026-07-15T02:00:00+00:00",
+        candidate_id="linked-candidate",
+    )
+
+    assert candidate["contract_observation"]["observation_id"] == "linked-contract"
+    assert candidate["contract_observation"]["contract_hash"] == contract["contract_hash"]
+
+
+def test_build_trade_candidate_rejects_non_iso_release_datetime():
+    draft = load_example()
+    draft["event"]["release_datetime"] = "not-a-date"
+
+    with pytest.raises(TradeJournalError, match="release_datetime"):
+        build_trade_candidate(draft, created_at="2026-07-15T02:00:00+00:00")
+
+
+def test_build_trade_candidate_rejects_non_iso_settlement_datetime():
+    draft = load_example()
+    draft["event"]["settlement_datetime"] = "not-a-date"
+
+    with pytest.raises(TradeJournalError, match="settlement_datetime"):
         build_trade_candidate(draft, created_at="2026-07-15T02:00:00+00:00")
 
 
