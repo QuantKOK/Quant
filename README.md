@@ -26,6 +26,16 @@ The new MacroEdge foundation lives in `macroedge/`. The original quant utility
 files and the prior Biotech Risk Scout code remain in place while the project
 pivots.
 
+### Market-contract observations
+
+`macroedge/contracts.py` validates raw macro event-contract observations before
+any trade thesis exists. A contract record stores the event type, question,
+settlement source/rules, observed bid/ask/last prices, midpoint-implied
+probability, spread, URL, timestamp, and a deterministic `contract_hash`.
+
+This layer is deliberately separate from the trade journal: most observed
+contracts should never become trade candidates.
+
 ### Trade journal (append-only, offline)
 
 `macroedge/app/journal.py` is a CLI for a tamper-evident, hash-chained journal of

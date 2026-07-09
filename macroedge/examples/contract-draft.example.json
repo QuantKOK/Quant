@@ -1,0 +1,24 @@
+{
+  "observed_at": "2026-07-14T20:00:00-05:00",
+  "event": {
+    "event_type": "cpi",
+    "name": "US CPI year-over-year print for June 2026",
+    "release_datetime": "2026-07-15T08:30:00-04:00",
+    "settlement_datetime": "2026-07-15T12:00:00-04:00",
+    "settlement_source": "Bureau of Labor Statistics CPI release",
+    "settlement_rules": "Contract resolves YES if the official BLS all-items CPI year-over-year value is above the threshold named in the market question."
+  },
+  "market": {
+    "platform": "Kalshi",
+    "contract_id": "EXAMPLE-CPI-2026JUN-ABOVE",
+    "question": "Will US CPI year-over-year be above the contract threshold?",
+    "market_url": "https://kalshi.com/",
+    "status": "observed"
+  },
+  "prices": {
+    "yes_bid": 0.40,
+    "yes_ask": 0.44,
+    "last_price": 0.42
+  },
+  "notes": "Example only. Replace with the exact contract threshold, platform URL, and observed bid/ask at capture time."
+}
