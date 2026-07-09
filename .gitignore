@@ -10,6 +10,7 @@ __pycache__/
 .pytest_cache/
 biotech-risk-scout/.cache/
 macroedge/*.jsonl
+macroedge/contract-observation*.json
 
 # Logs
 *.log

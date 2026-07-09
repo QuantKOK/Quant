@@ -36,6 +36,21 @@ probability, spread, URL, timestamp, and a deterministic `contract_hash`.
 This layer is deliberately separate from the trade journal: most observed
 contracts should never become trade candidates.
 
+```bash
+# Validate a contract draft and print its contract_hash
+py -3 macroedge/app/contracts.py validate \
+  --input macroedge/examples/contract-draft.example.json \
+  --observation-id example-contract-observation \
+  --observed-at 2026-07-14T20:00:00-05:00
+
+# Write the canonical observation JSON for audit/reference
+py -3 macroedge/app/contracts.py emit \
+  --input macroedge/examples/contract-draft.example.json \
+  --output macroedge/contract-observation.example.json \
+  --observation-id example-contract-observation \
+  --observed-at 2026-07-14T20:00:00-05:00
+```
+
 ### Trade journal (append-only, offline)
 
 `macroedge/app/journal.py` is a CLI for a tamper-evident, hash-chained journal of
