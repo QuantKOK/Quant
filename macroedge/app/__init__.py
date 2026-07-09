@@ -1,0 +1,1 @@
+"""MacroEdge CLI entry points."""

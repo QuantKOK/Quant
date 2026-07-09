@@ -1,0 +1,47 @@
+{
+  "contract_observation": {
+    "observation_id": "example-contract-observation",
+    "contract_hash": "2e41d1d4d02eec340f239bc132ce13d889febfdc81ca1cef823809ef68788e64",
+    "observed_at": "2026-07-14T20:00:00-05:00"
+  },
+  "event": {
+    "event_type": "cpi",
+    "name": "US CPI year-over-year print for June 2026",
+    "release_datetime": "2026-07-15T08:30:00-04:00",
+    "settlement_datetime": "2026-07-15T12:00:00-04:00",
+    "settlement_source": "Bureau of Labor Statistics CPI release",
+    "settlement_rules": "Contract resolves YES if the official BLS all-items CPI year-over-year value is above the threshold named in the market question."
+  },
+  "market": {
+    "platform": "Kalshi",
+    "contract_id": "EXAMPLE-CPI-2026JUN-ABOVE",
+    "question": "Will US CPI year-over-year be above the contract threshold?",
+    "side": "YES",
+    "entry_price": 0.42,
+    "market_url": "https://kalshi.com/"
+  },
+  "thesis": {
+    "evidence_as_of": "2026-07-14T20:00:00-05:00",
+    "fair_probability": 0.53,
+    "summary": "Example only. Replace with a concise macro thesis using inflation nowcasts, recent gasoline prices, shelter trend, consensus estimates, and the exact contract threshold.",
+    "data_sources": [
+      "https://www.bls.gov/cpi/",
+      "https://www.clevelandfed.org/indicators-and-data/inflation-nowcasting"
+    ]
+  },
+  "risk": {
+    "active_bankroll_usd": 400.0,
+    "planned_risk_usd": 20.0,
+    "max_risk_per_trade_usd": 25.0,
+    "current_event_exposure_usd": 0.0,
+    "max_event_exposure_usd": 50.0,
+    "min_edge_required": 0.08,
+    "exit_plan": "No add-ons after entry. Exit before settlement only if market price exceeds fair probability by at least 5 percentage points or if the thesis is invalidated by a cited data update."
+  },
+  "post_mortem": {
+    "outcome": null,
+    "settled_at": null,
+    "notes": "",
+    "mistake_tags": []
+  }
+}
