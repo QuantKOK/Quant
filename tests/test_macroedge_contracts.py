@@ -6,6 +6,14 @@ import pytest
 
 from macroedge.app import contracts as contracts_cli
 from macroedge.contracts import ContractError, build_contract_record, verify_contract_record
+from macroedge.contract_ledger import (
+    GENESIS_HASH,
+    ContractLedgerError,
+    append_observation,
+    build_ledger_record,
+    verify_ledger,
+)
+from macroedge.journal import canonical_json
 
 
 EXAMPLE = Path("macroedge/examples/contract-draft.example.json")
@@ -223,3 +231,129 @@ def test_contract_cli_verify_fails_on_tampered_record(tmp_path, capsys):
 
     assert contracts_cli.main(["verify", "--input", str(output)]) == 1
     assert '"ok": false' in capsys.readouterr().out
+
+
+def test_append_observation_and_verify_ledger_roundtrip(tmp_path):
+    ledger = tmp_path / "observations.jsonl"
+    r1 = append_observation(
+        str(ledger),
+        load_example(),
+        observation_id="obs-1",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    r2 = append_observation(
+        str(ledger),
+        load_example(),
+        observation_id="obs-2",
+        observed_at="2026-07-14T21:00:00-05:00",
+    )
+
+    assert r1["previous_hash"] == GENESIS_HASH
+    assert r2["previous_hash"] == r1["ledger_hash"]
+
+    result = verify_ledger(str(ledger))
+    assert result["ok"] is True, result["errors"]
+    assert result["record_count"] == 2
+    assert result["head_hash"] == r2["ledger_hash"]
+
+
+def test_append_observation_rejects_duplicate_id(tmp_path):
+    ledger = tmp_path / "observations.jsonl"
+    append_observation(
+        str(ledger),
+        load_example(),
+        observation_id="dup",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+
+    with pytest.raises(ContractLedgerError, match="duplicate observation_id"):
+        append_observation(
+            str(ledger),
+            load_example(),
+            observation_id="dup",
+            observed_at="2026-07-14T21:00:00-05:00",
+        )
+
+
+def test_append_observation_rejects_backdated_observation(tmp_path):
+    ledger = tmp_path / "observations.jsonl"
+    append_observation(
+        str(ledger),
+        load_example(),
+        observation_id="obs-1",
+        observed_at="2026-07-14T21:00:00-05:00",
+    )
+
+    with pytest.raises(ContractLedgerError, match="earlier than the ledger head"):
+        append_observation(
+            str(ledger),
+            load_example(),
+            observation_id="obs-2",
+            observed_at="2026-07-14T20:00:00-05:00",
+        )
+
+
+def test_verify_observation_ledger_detects_tampering(tmp_path):
+    ledger = tmp_path / "observations.jsonl"
+    append_observation(
+        str(ledger),
+        load_example(),
+        observation_id="obs-1",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    record = json.loads(ledger.read_text(encoding="utf-8").splitlines()[0])
+    record["prices"]["yes_ask"] = 0.90
+    ledger.write_text(canonical_json(record) + "\n", encoding="utf-8")
+
+    result = verify_ledger(str(ledger))
+
+    assert result["ok"] is False
+    assert any("mismatch" in error for error in result["errors"])
+
+
+def test_verify_observation_ledger_detects_chain_break(tmp_path):
+    ledger = tmp_path / "observations.jsonl"
+    r1 = build_ledger_record(
+        load_example(),
+        GENESIS_HASH,
+        observation_id="obs-1",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    r2 = build_ledger_record(
+        load_example(),
+        GENESIS_HASH,
+        observation_id="obs-2",
+        observed_at="2026-07-14T21:00:00-05:00",
+    )
+    ledger.write_text(canonical_json(r1) + "\n" + canonical_json(r2) + "\n", encoding="utf-8")
+
+    result = verify_ledger(str(ledger))
+
+    assert result["ok"] is False
+    assert any("previous_hash" in error for error in result["errors"])
+
+
+def test_contract_cli_append_verify_ledger_and_head(tmp_path, capsys):
+    ledger = tmp_path / "observations.jsonl"
+
+    assert contracts_cli.main(
+        [
+            "append",
+            "--input",
+            str(EXAMPLE),
+            "--ledger",
+            str(ledger),
+            "--observation-id",
+            "cli-ledger-obs",
+            "--observed-at",
+            "2026-07-14T20:00:00-05:00",
+        ]
+    ) == 0
+    assert "ledger_hash" in capsys.readouterr().out
+
+    assert contracts_cli.main(["verify-ledger", "--ledger", str(ledger)]) == 0
+    verify_output = capsys.readouterr().out
+    assert '"record_count": 1' in verify_output
+
+    assert contracts_cli.main(["head", "--ledger", str(ledger)]) == 0
+    assert len(capsys.readouterr().out.strip()) == 64

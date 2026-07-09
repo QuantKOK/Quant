@@ -58,6 +58,19 @@ py -3 macroedge/app/contracts.py verify \
 Pass both `--observation-id` and `--observed-at` when you need a reproducible
 `contract_hash`; otherwise a fresh observation ID is generated.
 
+```bash
+# Append observations to a tamper-evident local market tape
+py -3 macroedge/app/contracts.py append \
+  --input macroedge/examples/contract-draft.example.json \
+  --ledger macroedge/contract-observations.jsonl \
+  --observation-id example-contract-observation \
+  --observed-at 2026-07-14T20:00:00-05:00
+
+# Verify the observation ledger and print its current head
+py -3 macroedge/app/contracts.py verify-ledger --ledger macroedge/contract-observations.jsonl
+py -3 macroedge/app/contracts.py head --ledger macroedge/contract-observations.jsonl
+```
+
 ### Trade journal (append-only, offline)
 
 `macroedge/app/journal.py` is a CLI for a tamper-evident, hash-chained journal of
