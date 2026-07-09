@@ -1,4 +1,9 @@
 {
+  "contract_observation": {
+    "observation_id": "example-contract-observation",
+    "contract_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "observed_at": "2026-07-14T20:00:00-05:00"
+  },
   "event": {
     "event_type": "cpi",
     "name": "US CPI year-over-year print for June 2026",

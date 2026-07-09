@@ -63,6 +63,7 @@ def _draft_from_record(record: dict[str, Any]) -> dict[str, Any]:
         "thesis": record.get("thesis"),
         "risk": record.get("risk"),
         "post_mortem": record.get("post_mortem"),
+        "contract_observation": record.get("contract_observation"),
     }
 
 

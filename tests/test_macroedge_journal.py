@@ -39,7 +39,30 @@ def test_build_trade_candidate_calculates_edge_and_hash():
     assert record["thesis"]["fair_probability"] == 0.53
     assert record["thesis"]["edge"] == 0.11
     assert record["thesis"]["edge_percentage_points"] == 11.0
+    assert record["contract_observation"]["observation_id"] == "example-contract-observation"
     assert len(record["candidate_hash"]) == 64
+
+
+def test_build_trade_candidate_allows_manual_candidate_without_contract_observation():
+    draft = load_example()
+    draft.pop("contract_observation")
+
+    record = build_trade_candidate(
+        draft,
+        created_at="2026-07-15T02:00:00+00:00",
+        candidate_id="candidate-manual",
+    )
+
+    assert "contract_observation" not in record
+    assert len(record["candidate_hash"]) == 64
+
+
+def test_build_trade_candidate_rejects_bad_contract_hash():
+    draft = load_example()
+    draft["contract_observation"]["contract_hash"] = "not-a-hash"
+
+    with pytest.raises(TradeJournalError, match="contract_hash"):
+        build_trade_candidate(draft, created_at="2026-07-15T02:00:00+00:00")
 
 
 def test_build_trade_candidate_rejects_weak_edge():

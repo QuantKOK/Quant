@@ -45,6 +45,11 @@ candidate is validated by `macroedge.journal.build_trade_candidate` (edge, risk,
 and exposure guardrails) and appended to a JSONL ledger with predecessor-hash
 chaining.
 
+Trade candidates may optionally include `contract_observation` with the source
+contract observation's `observation_id`, `contract_hash`, and `observed_at`.
+Manual candidates remain valid without this reference, but linked candidates
+carry cleaner audit lineage from observed market to thesis to journal entry.
+
 ```bash
 # Validate a draft (see macroedge/examples/trade-draft.example.json)
 py -3 macroedge/app/journal.py validate \

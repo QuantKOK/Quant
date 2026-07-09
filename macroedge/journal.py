@@ -20,6 +20,7 @@ SCHEMA_VERSION = 1
 DEFAULT_MIN_EDGE = 0.08
 DEFAULT_MAX_RISK_PER_TRADE = 25.0
 DEFAULT_MAX_EVENT_EXPOSURE = 50.0
+HEX64_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 SUPPORTED_EVENT_TYPES = {
     "cpi",
     "unemployment",
@@ -59,6 +60,7 @@ def build_trade_candidate(
     thesis = _require_dict(draft, "thesis")
     risk = _require_dict(draft, "risk")
     review = _optional_dict(draft, "post_mortem")
+    contract_observation = _optional_contract_observation(draft)
 
     created = _parse_timestamp(created_at or _utc_now_iso(), "created_at")
     evidence_as_of = _parse_timestamp(_require_text(thesis, "evidence_as_of"), "thesis.evidence_as_of")
@@ -154,6 +156,8 @@ def build_trade_candidate(
             "mistake_tags": review.get("mistake_tags", []),
         },
     }
+    if contract_observation is not None:
+        record["contract_observation"] = contract_observation
     record["candidate_hash"] = _record_hash(record)
     return record
 
@@ -178,6 +182,28 @@ def _optional_dict(value: dict[str, Any], key: str) -> dict[str, Any]:
     if not isinstance(item, dict):
         raise TradeJournalError(f"{key} must be a JSON object")
     return item
+
+
+def _optional_contract_observation(value: dict[str, Any]) -> dict[str, Any] | None:
+    item = value.get("contract_observation")
+    if item is None:
+        return None
+    if not isinstance(item, dict):
+        raise TradeJournalError("contract_observation must be a JSON object")
+
+    observed_at = _parse_timestamp(
+        _require_text(item, "observed_at"),
+        "contract_observation.observed_at",
+    )
+    contract_hash = _require_text(item, "contract_hash")
+    if not HEX64_PATTERN.fullmatch(contract_hash):
+        raise TradeJournalError("contract_observation.contract_hash must be a lowercase SHA-256 hex digest")
+
+    return {
+        "observation_id": _require_text(item, "observation_id"),
+        "contract_hash": contract_hash,
+        "observed_at": observed_at.isoformat(),
+    }
 
 
 def _require_text(value: dict[str, Any], key: str) -> str:
