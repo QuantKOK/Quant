@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from macroedge.app import contracts as contracts_cli
 from macroedge.contracts import ContractError, build_contract_record
 
 
@@ -82,3 +83,53 @@ def test_build_contract_record_rejects_non_iso_settlement_datetime():
 
     with pytest.raises(ContractError, match="settlement_datetime"):
         build_contract_record(draft)
+
+
+def test_contract_cli_validate_and_emit(tmp_path, capsys):
+    output = tmp_path / "contract-record.json"
+
+    assert contracts_cli.main(
+        [
+            "validate",
+            "--input",
+            str(EXAMPLE),
+            "--observation-id",
+            "cli-contract",
+            "--observed-at",
+            "2026-07-14T20:00:00-05:00",
+        ]
+    ) == 0
+    validate_output = capsys.readouterr().out
+    assert '"ok": true' in validate_output
+    assert '"contract_hash"' in validate_output
+
+    assert contracts_cli.main(
+        [
+            "emit",
+            "--input",
+            str(EXAMPLE),
+            "--output",
+            str(output),
+            "--observation-id",
+            "cli-contract",
+            "--observed-at",
+            "2026-07-14T20:00:00-05:00",
+        ]
+    ) == 0
+    emit_output = capsys.readouterr().out
+    assert '"ok": true' in emit_output
+
+    record = json.loads(output.read_text(encoding="utf-8"))
+    assert record["observation_id"] == "cli-contract"
+    assert len(record["contract_hash"]) == 64
+
+
+def test_contract_cli_validate_fails_on_bad_draft(tmp_path, capsys):
+    bad = tmp_path / "bad-contract.json"
+    draft = load_example()
+    draft["prices"]["yes_bid"] = 0.70
+    draft["prices"]["yes_ask"] = 0.60
+    bad.write_text(json.dumps(draft), encoding="utf-8")
+
+    assert contracts_cli.main(["validate", "--input", str(bad)]) == 1
+    assert "validate failed" in capsys.readouterr().err
