@@ -1,0 +1,19 @@
+{
+  "ticker": "KXCPIYOY-26JUN-T3.0",
+  "event_ticker": "KXCPIYOY-26JUN",
+  "title": "Will year-over-year CPI be above 3.0% for June 2026?",
+  "subtitle": "Official BLS all-items CPI year-over-year release",
+  "category": "Economics",
+  "status": "open",
+  "yes_bid_dollars": "0.40",
+  "yes_ask_dollars": "0.44",
+  "last_price_dollars": "0.42",
+  "rules_primary": "This market resolves according to the official BLS all-items CPI year-over-year value for June 2026.",
+  "rules_secondary": "If the relevant official source is revised after initial publication, the market uses the value specified by Kalshi's market rules.",
+  "close_time": "2026-07-15T08:30:00-04:00",
+  "latest_expiration_time": "2026-07-15T12:00:00-04:00",
+  "occurrence_datetime": "2026-07-15T08:30:00-04:00",
+  "observed_at": "2026-07-14T20:00:00-05:00",
+  "macroedge_event_type": "cpi",
+  "macroedge_settlement_source": "Bureau of Labor Statistics CPI release"
+}
