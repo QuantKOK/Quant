@@ -73,6 +73,14 @@ py -3 macroedge/app/kalshi.py append \
   --event-type cpi \
   --observed-at 2026-07-14T20:00:00-05:00 \
   --observation-id kalshi-cpi-example
+
+# Append a whole offline fixture directory to the local market tape
+py -3 macroedge/app/kalshi.py batch-append \
+  --input-dir macroedge/examples \
+  --glob "kalshi-market-*.example.json" \
+  --ledger macroedge/contract-observations.jsonl \
+  --observed-at 2026-07-14T20:00:00-05:00 \
+  --id-prefix kalshi-snapshot-20260714
 ```
 
 These commands are fixture-to-ledger tools only: no Kalshi API call, no

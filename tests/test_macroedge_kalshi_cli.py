@@ -8,6 +8,7 @@ from macroedge.contract_ledger import verify_ledger
 from macroedge.contracts import verify_contract_record
 
 CPI = Path("macroedge/examples/kalshi-market-cpi.example.json")
+FED = Path("macroedge/examples/kalshi-market-fed.example.json")
 T1 = "2026-07-14T20:00:00-05:00"
 T2 = "2026-07-14T21:00:00-05:00"
 
@@ -19,6 +20,12 @@ def load_cpi():
 def write_market(tmp_path, market, name="market.json"):
     path = tmp_path / name
     path.write_text(json.dumps(market), encoding="utf-8")
+    return path
+
+
+def copy_fixture(tmp_path, source, name):
+    path = tmp_path / name
+    path.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     return path
 
 
@@ -140,6 +147,168 @@ def test_cli_append_rejects_invalid_input(tmp_path, capsys):
     assert rc == 1
     assert "append failed" in capsys.readouterr().err
     assert not ledger.exists()
+
+
+# --- batch append -------------------------------------------------------------
+
+
+def test_cli_batch_append_directory_chains_and_verifies(tmp_path, capsys):
+    market_dir = tmp_path / "markets"
+    market_dir.mkdir()
+    copy_fixture(market_dir, CPI, "cpi.json")
+    copy_fixture(market_dir, FED, "fed.json")
+    ledger = tmp_path / "observations.jsonl"
+
+    rc = kalshi_cli.main(
+        [
+            "batch-append",
+            "--input-dir",
+            str(market_dir),
+            "--ledger",
+            str(ledger),
+            "--observed-at",
+            T1,
+            "--id-prefix",
+            "batch",
+        ]
+    )
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert '"appended_count": 2' in out
+    assert '"error_count": 0' in out
+    result = verify_ledger(str(ledger))
+    assert result["ok"] is True, result["errors"]
+    assert result["record_count"] == 2
+    assert result["observation_ids"] == {"batch-cpi", "batch-fed"}
+
+
+def test_cli_batch_append_manifest_supports_relative_paths(tmp_path, capsys):
+    copy_fixture(tmp_path, CPI, "cpi.json")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"inputs": ["cpi.json"]}), encoding="utf-8")
+    ledger = tmp_path / "observations.jsonl"
+
+    rc = kalshi_cli.main(
+        [
+            "batch-append",
+            "--manifest",
+            str(manifest),
+            "--ledger",
+            str(ledger),
+            "--event-type",
+            "cpi",
+            "--observed-at",
+            T1,
+            "--id-prefix",
+            "manifest",
+        ]
+    )
+
+    assert rc == 0
+    capsys.readouterr()
+    result = verify_ledger(str(ledger))
+    assert result["ok"] is True, result["errors"]
+    assert result["record_count"] == 1
+    assert result["observation_ids"] == {"manifest-cpi"}
+
+
+def test_cli_batch_append_preflight_error_writes_nothing_by_default(tmp_path, capsys):
+    market_dir = tmp_path / "markets"
+    market_dir.mkdir()
+    copy_fixture(market_dir, CPI, "cpi.json")
+    bad = load_cpi()
+    bad.pop("ticker")
+    write_market(market_dir, bad, "bad.json")
+    ledger = tmp_path / "observations.jsonl"
+
+    rc = kalshi_cli.main(
+        [
+            "batch-append",
+            "--input-dir",
+            str(market_dir),
+            "--ledger",
+            str(ledger),
+            "--observed-at",
+            T1,
+            "--id-prefix",
+            "batch",
+        ]
+    )
+    out = capsys.readouterr().out
+
+    assert rc == 1
+    assert '"appended_count": 0' in out
+    assert '"error_count": 1' in out
+    assert not ledger.exists()
+
+
+def test_cli_batch_append_rejects_duplicate_generated_ids_before_writing(tmp_path, capsys):
+    market_dir = tmp_path / "markets"
+    first = market_dir / "a"
+    second = market_dir / "b"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+    copy_fixture(first, CPI, "same.json")
+    copy_fixture(second, FED, "same.json")
+    ledger = tmp_path / "observations.jsonl"
+
+    rc = kalshi_cli.main(
+        [
+            "batch-append",
+            "--input-dir",
+            str(market_dir),
+            "--glob",
+            "**/*.json",
+            "--recursive",
+            "--ledger",
+            str(ledger),
+            "--observed-at",
+            T1,
+            "--id-prefix",
+            "batch",
+        ]
+    )
+    out = capsys.readouterr().out
+
+    assert rc == 1
+    assert "duplicate generated observation_id" in out
+    assert '"appended_count": 0' in out
+    assert not ledger.exists()
+
+
+def test_cli_batch_append_continue_on_error_appends_valid_inputs(tmp_path, capsys):
+    market_dir = tmp_path / "markets"
+    market_dir.mkdir()
+    copy_fixture(market_dir, CPI, "cpi.json")
+    bad = load_cpi()
+    bad.pop("ticker")
+    write_market(market_dir, bad, "bad.json")
+    ledger = tmp_path / "observations.jsonl"
+
+    rc = kalshi_cli.main(
+        [
+            "batch-append",
+            "--input-dir",
+            str(market_dir),
+            "--ledger",
+            str(ledger),
+            "--observed-at",
+            T1,
+            "--id-prefix",
+            "batch",
+            "--continue-on-error",
+        ]
+    )
+    out = capsys.readouterr().out
+
+    assert rc == 1
+    assert '"appended_count": 1' in out
+    assert '"error_count": 1' in out
+    result = verify_ledger(str(ledger))
+    assert result["ok"] is True, result["errors"]
+    assert result["record_count"] == 1
+    assert result["observation_ids"] == {"batch-cpi"}
 
 
 # --- offline guarantee --------------------------------------------------------
