@@ -16,6 +16,7 @@ from macroedge.ledger import (
     LedgerError,
     append_candidate,
     build_ledger_record,
+    summarize_ledger,
     verify_ledger,
 )
 
@@ -259,6 +260,54 @@ def test_append_and_verify_roundtrip(tmp_path):
     assert result["head_hash"] == r2["ledger_hash"]
 
 
+def test_summarize_candidate_ledger_reports_risk_edge_and_mix(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    first = load_example()
+    second = load_example()
+    second["event"]["event_type"] = "fed_decision"
+    second["market"]["side"] = "NO"
+    second["market"]["entry_price"] = 0.35
+    second["thesis"]["fair_probability"] = 0.45
+    second["risk"]["planned_risk_usd"] = 10.0
+    second["post_mortem"]["outcome"] = "won"
+
+    append_candidate(str(ledger), first, created_at=T1, candidate_id="summary-1")
+    append_candidate(str(ledger), second, created_at=T2, candidate_id="summary-2")
+
+    summary = summarize_ledger(str(ledger))
+
+    assert summary["ok"] is True
+    assert summary["record_count"] == 2
+    assert summary["first_created_at"] == T1
+    assert summary["last_created_at"] == T2
+    assert summary["planned_risk_usd"] == 30.0
+    assert summary["average_planned_risk_usd"] == 15.0
+    assert summary["largest_planned_risk_usd"] == 20.0
+    assert summary["average_edge_percentage_points"] == 10.5
+    assert summary["largest_edge_percentage_points"] == 11.0
+    assert summary["smallest_edge_percentage_points"] == 10.0
+    assert summary["event_types"] == {"cpi": 1, "fed_decision": 1}
+    assert summary["sides"] == {"NO": 1, "YES": 1}
+    assert summary["statuses"] == {"candidate": 2}
+    assert summary["open_post_mortems"] == 1
+    assert summary["linked_contract_observations"] == 2
+
+
+def test_summarize_candidate_ledger_handles_empty_and_invalid_ledgers(tmp_path):
+    empty = tmp_path / "empty.jsonl"
+    empty_summary = summarize_ledger(str(empty))
+    assert empty_summary["ok"] is True
+    assert empty_summary["record_count"] == 0
+    assert empty_summary["average_edge_percentage_points"] is None
+
+    invalid = tmp_path / "invalid.jsonl"
+    invalid.write_text("not json\n", encoding="utf-8")
+    invalid_summary = summarize_ledger(str(invalid))
+    assert invalid_summary["ok"] is False
+    assert invalid_summary["errors"]
+    assert invalid_summary["event_types"] == {}
+
+
 def test_append_rejects_weak_edge(tmp_path):
     ledger = tmp_path / "ledger.jsonl"
     draft = load_example()
@@ -380,6 +429,12 @@ def test_cli_validate_append_verify_head(tmp_path, capsys):
 
     assert journal_cli.main(["verify", "--ledger", str(ledger)]) == 0
     assert '"record_count": 1' in capsys.readouterr().out
+
+    assert journal_cli.main(["summary", "--ledger", str(ledger)]) == 0
+    summary_output = capsys.readouterr().out
+    assert '"planned_risk_usd": 20.0' in summary_output
+    assert '"average_edge_percentage_points": 11.0' in summary_output
+    assert '"YES": 1' in summary_output
 
     assert journal_cli.main(["head", "--ledger", str(ledger)]) == 0
     assert len(capsys.readouterr().out.strip()) == 64

@@ -15,6 +15,7 @@ import json
 import os
 import re
 import threading
+from collections import Counter
 from datetime import datetime
 from typing import Any
 
@@ -209,6 +210,79 @@ def verify_ledger(ledger_path: str) -> dict[str, Any]:
         count=count,
         last_created_at=previous_created_at.isoformat() if previous_created_at else None,
     )
+
+
+def summarize_ledger(ledger_path: str) -> dict[str, Any]:
+    """Return a compact, read-only summary of a trade-candidate ledger."""
+    verification = verify_ledger(ledger_path)
+    summary = {
+        "ok": verification["ok"],
+        "record_count": verification["record_count"],
+        "head_hash": verification["head_hash"],
+        "first_created_at": None,
+        "last_created_at": verification["last_created_at"],
+        "planned_risk_usd": 0.0,
+        "average_planned_risk_usd": None,
+        "largest_planned_risk_usd": None,
+        "average_edge_percentage_points": None,
+        "largest_edge_percentage_points": None,
+        "smallest_edge_percentage_points": None,
+        "event_types": {},
+        "sides": {},
+        "statuses": {},
+        "open_post_mortems": 0,
+        "linked_contract_observations": 0,
+        "errors": verification["errors"],
+    }
+    if not verification["ok"] or verification["record_count"] == 0:
+        return summary
+
+    event_types: Counter[str] = Counter()
+    sides: Counter[str] = Counter()
+    statuses: Counter[str] = Counter()
+    planned_risks: list[float] = []
+    edges: list[float] = []
+    first_created_at = None
+    open_post_mortems = 0
+    linked_contract_observations = 0
+
+    with open(os.path.abspath(ledger_path), "r", encoding="utf-8") as handle:
+        for line in handle:
+            record = json.loads(line)
+            created_at = record.get("created_at")
+            if first_created_at is None:
+                first_created_at = created_at
+
+            event = record.get("event", {})
+            market = record.get("market", {})
+            thesis = record.get("thesis", {})
+            risk = record.get("risk", {})
+            post_mortem = record.get("post_mortem", {})
+
+            event_types[str(event.get("event_type", "unknown"))] += 1
+            sides[str(market.get("side", "unknown"))] += 1
+            statuses[str(record.get("status", "unknown"))] += 1
+            planned_risks.append(float(risk.get("planned_risk_usd", 0.0)))
+            edges.append(float(thesis.get("edge_percentage_points", 0.0)))
+
+            if not post_mortem.get("outcome"):
+                open_post_mortems += 1
+            if record.get("contract_observation") is not None:
+                linked_contract_observations += 1
+
+    summary["first_created_at"] = first_created_at
+    summary["planned_risk_usd"] = round(sum(planned_risks), 2)
+    summary["average_planned_risk_usd"] = round(sum(planned_risks) / len(planned_risks), 2)
+    summary["largest_planned_risk_usd"] = round(max(planned_risks), 2)
+    summary["average_edge_percentage_points"] = round(sum(edges) / len(edges), 4)
+    summary["largest_edge_percentage_points"] = round(max(edges), 4)
+    summary["smallest_edge_percentage_points"] = round(min(edges), 4)
+    summary["event_types"] = dict(sorted(event_types.items()))
+    summary["sides"] = dict(sorted(sides.items()))
+    summary["statuses"] = dict(sorted(statuses.items()))
+    summary["open_post_mortems"] = open_post_mortems
+    summary["linked_contract_observations"] = linked_contract_observations
+    return summary
 
 
 def _result(
