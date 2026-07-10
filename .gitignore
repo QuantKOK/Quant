@@ -11,6 +11,7 @@ __pycache__/
 biotech-risk-scout/.cache/
 macroedge/*.jsonl
 macroedge/contract-observation*.json
+macroedge/trade-draft*.json
 
 # Logs
 *.log

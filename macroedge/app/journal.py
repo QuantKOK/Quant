@@ -4,6 +4,7 @@
 Subcommands:
 
 * ``validate --input PATH``                 - validate one trade-candidate draft
+* ``draft-from-observation --input PATH``   - seed a candidate draft from an observation
 * ``append --input PATH --ledger PATH``     - append a validated candidate (hash-chained)
 * ``verify --ledger PATH``                  - verify the ledger hash chain and rules
 * ``head --ledger PATH``                    - print the current ledger head hash
@@ -18,10 +19,17 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 
 # Allow running as a script: put the repo root (parent of ``macroedge``) on sys.path.
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+from macroedge.candidate_builder import (  # type: ignore
+    DEFAULT_EXIT_PLAN,
+    CandidateBuilderError,
+    build_candidate_from_observation,
+    build_trade_draft_from_observation,
+)
 from macroedge.journal import TradeJournalError, build_trade_candidate  # type: ignore
 from macroedge.ledger import append_candidate, verify_ledger  # type: ignore
 
@@ -31,8 +39,27 @@ def _print_json(payload: object) -> None:
 
 
 def _load_draft(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as handle:
+    with open(path, "r", encoding="utf-8-sig") as handle:
         return json.load(handle)
+
+
+def _atomic_write_json(output: str, payload: dict) -> None:
+    output_path = os.path.abspath(output)
+    output_dir = os.path.dirname(output_path) or "."
+    os.makedirs(output_dir, exist_ok=True)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", newline="\n", dir=output_dir, delete=False
+        ) as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            temp_path = handle.name
+        os.replace(temp_path, output_path)
+    except OSError:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -51,6 +78,61 @@ def cmd_validate(args: argparse.Namespace) -> int:
             "candidate_id": candidate["candidate_id"],
             "event_type": candidate["event"]["event_type"],
             "side": candidate["market"]["side"],
+            "edge_percentage_points": candidate["thesis"]["edge_percentage_points"],
+            "candidate_hash": candidate["candidate_hash"],
+        }
+    )
+    return 0
+
+
+def cmd_draft_from_observation(args: argparse.Namespace) -> int:
+    try:
+        observation = _load_draft(args.input)
+        draft = build_trade_draft_from_observation(
+            observation,
+            side=args.side,
+            fair_probability=args.fair_probability,
+            thesis_summary=args.thesis_summary,
+            data_sources=args.data_source,
+            active_bankroll_usd=args.active_bankroll_usd,
+            planned_risk_usd=args.planned_risk_usd,
+            evidence_as_of=args.evidence_as_of,
+            current_event_exposure_usd=args.current_event_exposure_usd,
+            max_risk_per_trade_usd=args.max_risk_per_trade_usd,
+            max_event_exposure_usd=args.max_event_exposure_usd,
+            min_edge_required=args.min_edge_required,
+            exit_plan=args.exit_plan,
+        )
+        candidate = build_candidate_from_observation(
+            observation,
+            side=args.side,
+            fair_probability=args.fair_probability,
+            thesis_summary=args.thesis_summary,
+            data_sources=args.data_source,
+            active_bankroll_usd=args.active_bankroll_usd,
+            planned_risk_usd=args.planned_risk_usd,
+            evidence_as_of=args.evidence_as_of,
+            current_event_exposure_usd=args.current_event_exposure_usd,
+            max_risk_per_trade_usd=args.max_risk_per_trade_usd,
+            max_event_exposure_usd=args.max_event_exposure_usd,
+            min_edge_required=args.min_edge_required,
+            exit_plan=args.exit_plan,
+            created_at=args.created_at,
+            candidate_id=args.candidate_id,
+        )
+        _atomic_write_json(args.output, draft)
+    except (CandidateBuilderError, TradeJournalError, OSError, json.JSONDecodeError) as exc:
+        print(f"draft-from-observation failed: {exc}", file=sys.stderr)
+        return 1
+    _print_json(
+        {
+            "ok": True,
+            "output": os.path.abspath(args.output),
+            "candidate_id": candidate["candidate_id"],
+            "observation_id": candidate["contract_observation"]["observation_id"],
+            "side": candidate["market"]["side"],
+            "entry_price": candidate["market"]["entry_price"],
+            "fair_probability": candidate["thesis"]["fair_probability"],
             "edge_percentage_points": candidate["thesis"]["edge_percentage_points"],
             "candidate_hash": candidate["candidate_hash"],
         }
@@ -111,6 +193,38 @@ def build_parser() -> argparse.ArgumentParser:
     validate_p.add_argument("--created-at", default=None, help="Optional fixed ISO-8601 created_at (else now)")
     validate_p.add_argument("--candidate-id", default=None, help="Optional fixed candidate id (else a UUID)")
     validate_p.set_defaults(func=cmd_validate)
+
+    draft_p = subparsers.add_parser(
+        "draft-from-observation",
+        help="Seed a trade-candidate draft from a verified contract observation",
+    )
+    draft_p.add_argument("--input", required=True, help="Emitted contract observation JSON path")
+    draft_p.add_argument("--output", required=True, help="Output trade-candidate draft JSON path")
+    draft_p.add_argument("--side", required=True, choices=["YES", "NO", "yes", "no"], help="Candidate side")
+    draft_p.add_argument(
+        "--fair-probability",
+        required=True,
+        type=float,
+        help="Your fair probability for the selected side",
+    )
+    draft_p.add_argument("--thesis-summary", required=True, help="Concise human thesis for the selected side")
+    draft_p.add_argument(
+        "--data-source",
+        action="append",
+        required=True,
+        help="Thesis source URL; repeat for multiple sources",
+    )
+    draft_p.add_argument("--active-bankroll-usd", required=True, type=float, help="Active bankroll used for risk checks")
+    draft_p.add_argument("--planned-risk-usd", required=True, type=float, help="Planned dollars at risk")
+    draft_p.add_argument("--evidence-as-of", default=None, help="Optional ISO evidence timestamp; defaults to observation observed_at")
+    draft_p.add_argument("--created-at", default=None, help="Optional fixed ISO created_at for validation")
+    draft_p.add_argument("--candidate-id", default=None, help="Optional fixed candidate id for validation")
+    draft_p.add_argument("--current-event-exposure-usd", default=0.0, type=float, help="Current dollars already exposed to this event")
+    draft_p.add_argument("--max-risk-per-trade-usd", default=25.0, type=float, help="Per-trade risk cap")
+    draft_p.add_argument("--max-event-exposure-usd", default=50.0, type=float, help="Event exposure cap")
+    draft_p.add_argument("--min-edge-required", default=0.08, type=float, help="Minimum required edge as a probability")
+    draft_p.add_argument("--exit-plan", default=DEFAULT_EXIT_PLAN, help="Exit plan text")
+    draft_p.set_defaults(func=cmd_draft_from_observation)
 
     append_p = subparsers.add_parser("append", help="Append a validated candidate to the ledger")
     append_p.add_argument("--input", required=True, help="Trade-candidate draft JSON path")
