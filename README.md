@@ -47,6 +47,37 @@ used as event or settlement time, settlement timing prefers `expiration_time`
 then `expected_expiration_time` then `latest_expiration_time`, and endpoint
 prices (`0.00` / `1.00`) are treated as absent quotes rather than clamped.
 
+Use `macroedge/app/kalshi.py` when the input is a raw offline Kalshi-style market
+fixture and you want the adapter to build the neutral MacroEdge observation:
+
+```bash
+# Validate a raw Kalshi fixture as a MacroEdge contract observation
+py -3 macroedge/app/kalshi.py validate \
+  --input macroedge/examples/kalshi-market-cpi.example.json \
+  --event-type cpi \
+  --observed-at 2026-07-14T20:00:00-05:00 \
+  --observation-id kalshi-cpi-example
+
+# Emit the canonical observation JSON for audit/reference
+py -3 macroedge/app/kalshi.py emit \
+  --input macroedge/examples/kalshi-market-cpi.example.json \
+  --output macroedge/contract-observation-kalshi.example.json \
+  --event-type cpi \
+  --observed-at 2026-07-14T20:00:00-05:00 \
+  --observation-id kalshi-cpi-example
+
+# Append the adapted observation to the local market tape
+py -3 macroedge/app/kalshi.py append \
+  --input macroedge/examples/kalshi-market-cpi.example.json \
+  --ledger macroedge/contract-observations.jsonl \
+  --event-type cpi \
+  --observed-at 2026-07-14T20:00:00-05:00 \
+  --observation-id kalshi-cpi-example
+```
+
+These commands are fixture-to-ledger tools only: no Kalshi API call, no
+credentials, and no order execution.
+
 ```bash
 # Validate a contract draft and print its contract_hash
 py -3 macroedge/app/contracts.py validate \
