@@ -8,6 +8,7 @@ Subcommands:
 * ``verify --input PATH``                - verify an emitted contract record
 * ``append --input PATH --ledger PATH``  - append a contract observation to a ledger
 * ``verify-ledger --ledger PATH``        - verify an observation ledger
+* ``summary --ledger PATH``              - summarize a verified observation ledger
 * ``head --ledger PATH``                 - print the current observation-ledger head
 
 This tool is offline only. It never contacts a prediction-market API and never
@@ -26,7 +27,7 @@ import tempfile
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from macroedge.contracts import ContractError, build_contract_record, verify_contract_record  # type: ignore
-from macroedge.contract_ledger import append_observation, verify_ledger  # type: ignore
+from macroedge.contract_ledger import append_observation, summarize_ledger, verify_ledger  # type: ignore
 
 
 def _print_json(payload: object) -> None:
@@ -151,6 +152,12 @@ def cmd_verify_ledger(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_summary(args: argparse.Namespace) -> int:
+    result = summarize_ledger(args.ledger)
+    _print_json(result)
+    return 0 if result["ok"] else 1
+
+
 def cmd_head(args: argparse.Namespace) -> int:
     result = verify_ledger(args.ledger)
     print(result["head_hash"])
@@ -188,6 +195,10 @@ def build_parser() -> argparse.ArgumentParser:
     verify_ledger_p = subparsers.add_parser("verify-ledger", help="Verify an observation ledger")
     verify_ledger_p.add_argument("--ledger", required=True, help="Append-only observation ledger JSONL path")
     verify_ledger_p.set_defaults(func=cmd_verify_ledger)
+
+    summary_p = subparsers.add_parser("summary", help="Summarize a verified observation ledger")
+    summary_p.add_argument("--ledger", required=True, help="Append-only observation ledger JSONL path")
+    summary_p.set_defaults(func=cmd_summary)
 
     head_p = subparsers.add_parser("head", help="Print the current observation-ledger head hash")
     head_p.add_argument("--ledger", required=True, help="Append-only observation ledger JSONL path")

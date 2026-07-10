@@ -11,6 +11,7 @@ from macroedge.contract_ledger import (
     ContractLedgerError,
     append_observation,
     build_ledger_record,
+    summarize_ledger,
     verify_ledger,
 )
 from macroedge.journal import canonical_json
@@ -257,6 +258,52 @@ def test_append_observation_and_verify_ledger_roundtrip(tmp_path):
     assert result["head_hash"] == r2["ledger_hash"]
 
 
+def test_summarize_observation_ledger_counts_current_tape(tmp_path):
+    ledger = tmp_path / "observations.jsonl"
+    append_observation(
+        str(ledger),
+        load_example(),
+        observation_id="obs-cpi",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    draft = load_example()
+    draft["event"]["event_type"] = "fed_decision"
+    draft["market"]["status"] = "closed"
+    draft["prices"] = {"last_price": 0.34}
+    append_observation(
+        str(ledger),
+        draft,
+        observation_id="obs-fed",
+        observed_at="2026-07-14T21:00:00-05:00",
+    )
+
+    summary = summarize_ledger(str(ledger))
+
+    assert summary["ok"] is True
+    assert summary["record_count"] == 2
+    assert summary["first_observed_at"] == "2026-07-14T20:00:00-05:00"
+    assert summary["last_observed_at"] == "2026-07-14T21:00:00-05:00"
+    assert summary["event_types"] == {"cpi": 1, "fed_decision": 1}
+    assert summary["platforms"] == {"Kalshi": 2}
+    assert summary["statuses"] == {"closed": 1, "observed": 1}
+    assert summary["implied_probability_sources"] == {
+        "bid_ask_midpoint": 1,
+        "last_price": 1,
+    }
+
+
+def test_summarize_observation_ledger_reports_invalid_ledger(tmp_path):
+    ledger = tmp_path / "observations.jsonl"
+    ledger.write_text("{ not json\n", encoding="utf-8")
+
+    summary = summarize_ledger(str(ledger))
+
+    assert summary["ok"] is False
+    assert summary["record_count"] == 0
+    assert summary["errors"]
+    assert summary["event_types"] == {}
+
+
 def test_append_observation_rejects_duplicate_id(tmp_path):
     ledger = tmp_path / "observations.jsonl"
     append_observation(
@@ -354,6 +401,11 @@ def test_contract_cli_append_verify_ledger_and_head(tmp_path, capsys):
     assert contracts_cli.main(["verify-ledger", "--ledger", str(ledger)]) == 0
     verify_output = capsys.readouterr().out
     assert '"record_count": 1' in verify_output
+
+    assert contracts_cli.main(["summary", "--ledger", str(ledger)]) == 0
+    summary_output = capsys.readouterr().out
+    assert '"event_types"' in summary_output
+    assert '"cpi": 1' in summary_output
 
     assert contracts_cli.main(["head", "--ledger", str(ledger)]) == 0
     assert len(capsys.readouterr().out.strip()) == 64

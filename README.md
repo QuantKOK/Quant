@@ -118,6 +118,7 @@ py -3 macroedge/app/contracts.py append \
 
 # Verify the observation ledger and print its current head
 py -3 macroedge/app/contracts.py verify-ledger --ledger macroedge/contract-observations.jsonl
+py -3 macroedge/app/contracts.py summary --ledger macroedge/contract-observations.jsonl
 py -3 macroedge/app/contracts.py head --ledger macroedge/contract-observations.jsonl
 ```
 
