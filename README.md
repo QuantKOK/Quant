@@ -36,6 +36,17 @@ probability, spread, URL, timestamp, and a deterministic `contract_hash`.
 This layer is deliberately separate from the trade journal: most observed
 contracts should never become trade candidates.
 
+`macroedge/adapters/kalshi.py` converts offline Kalshi-style market JSON into
+the same platform-neutral contract draft shape. It uses only local JSON and does
+not call Kalshi APIs, require credentials, or place trades. Adapter fixtures live
+in `macroedge/examples/kalshi-market-*.example.json`.
+
+The Kalshi adapter is intentionally conservative: `event_type` must be supplied
+explicitly, `close_time` is retained only as trading-close metadata and is never
+used as event or settlement time, settlement timing prefers `expiration_time`
+then `expected_expiration_time` then `latest_expiration_time`, and endpoint
+prices (`0.00` / `1.00`) are treated as absent quotes rather than clamped.
+
 ```bash
 # Validate a contract draft and print its contract_hash
 py -3 macroedge/app/contracts.py validate \

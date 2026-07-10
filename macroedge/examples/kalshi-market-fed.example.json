@@ -1,0 +1,18 @@
+{
+  "ticker": "KXFEDDECISION-26JUL-CUT",
+  "event_ticker": "KXFEDDECISION-26JUL",
+  "title": "Will the Federal Reserve cut rates at the July 2026 meeting?",
+  "subtitle": "Target-rate decision after the scheduled FOMC meeting",
+  "category": "Economics",
+  "status": "open",
+  "yes_bid": 32,
+  "yes_ask": 36,
+  "last_price": 34,
+  "rules_primary": "This market resolves according to the Federal Reserve's announced target-rate decision for the July 2026 FOMC meeting.",
+  "close_time": "2026-07-29T14:00:00-04:00",
+  "latest_expiration_time": "2026-07-29T18:00:00-04:00",
+  "occurrence_datetime": "2026-07-29T14:00:00-04:00",
+  "observed_at": "2026-07-28T20:00:00-05:00",
+  "macroedge_event_type": "fed_decision",
+  "macroedge_settlement_source": "Federal Reserve FOMC statement"
+}

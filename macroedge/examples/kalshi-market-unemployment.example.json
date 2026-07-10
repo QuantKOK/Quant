@@ -1,0 +1,18 @@
+{
+  "ticker": "KXUNEMP-26JUN-T4.2",
+  "event_ticker": "KXUNEMP-26JUN",
+  "title": "Will the unemployment rate be above 4.2% for June 2026?",
+  "subtitle": "Official BLS Employment Situation release",
+  "category": "Economics",
+  "status": "open",
+  "yes_bid_dollars": "45¢",
+  "yes_ask_dollars": "49¢",
+  "last_price_dollars": "47¢",
+  "rules_primary": "This market resolves according to the official BLS unemployment rate for June 2026.",
+  "close_time": "2026-07-03T08:30:00-04:00",
+  "latest_expiration_time": "2026-07-03T12:00:00-04:00",
+  "occurrence_datetime": "2026-07-03T08:30:00-04:00",
+  "observed_at": "2026-07-02T20:00:00-05:00",
+  "macroedge_event_type": "unemployment",
+  "macroedge_settlement_source": "Bureau of Labor Statistics Employment Situation release"
+}
