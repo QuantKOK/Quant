@@ -8,6 +8,7 @@ Subcommands:
 * ``append --input PATH --ledger PATH``     - append a validated candidate (hash-chained)
 * ``verify --ledger PATH``                  - verify the ledger hash chain and rules
 * ``summary --ledger PATH``                 - summarize a verified candidate ledger
+* ``settle --candidate-id ID``              - append a settlement/post-mortem record
 * ``head --ledger PATH``                    - print the current ledger head hash
 
 This is a probability-research journal for macro event contracts. It is offline
@@ -33,6 +34,13 @@ from macroedge.candidate_builder import (  # type: ignore
 )
 from macroedge.journal import TradeJournalError, build_trade_candidate  # type: ignore
 from macroedge.ledger import append_candidate, summarize_ledger, verify_ledger  # type: ignore
+from macroedge.settlement_ledger import (  # type: ignore
+    append_settlement,
+    find_candidate_in_ledger,
+    summarize_ledger as summarize_settlement_ledger,
+    verify_ledger as verify_settlement_ledger,
+)
+from macroedge.settlements import SettlementError  # type: ignore
 
 
 def _print_json(payload: object) -> None:
@@ -185,6 +193,59 @@ def cmd_summary(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_settle(args: argparse.Namespace) -> int:
+    try:
+        candidate = find_candidate_in_ledger(args.journal_ledger, args.candidate_id)
+        record = append_settlement(
+            args.settlement_ledger,
+            candidate,
+            actual_result=args.actual_result,
+            settled_at=args.settled_at,
+            notes=args.notes,
+            mistake_tags=args.mistake_tag,
+            recorded_at=args.recorded_at,
+            settlement_id=args.settlement_id,
+        )
+    except (SettlementError, OSError, json.JSONDecodeError) as exc:
+        print(f"settle failed: {exc}", file=sys.stderr)
+        return 1
+    _print_json(
+        {
+            "ok": True,
+            "settlement_id": record["settlement_id"],
+            "candidate_id": record["candidate"]["candidate_id"],
+            "actual_result": record["settlement"]["actual_result"],
+            "outcome": record["settlement"]["outcome"],
+            "brier_score": record["settlement"]["brier_score"],
+            "settlement_hash": record["settlement_hash"],
+            "previous_hash": record["previous_hash"],
+            "ledger_hash": record["ledger_hash"],
+            "settlement_ledger": os.path.abspath(args.settlement_ledger),
+        }
+    )
+    return 0
+
+
+def cmd_verify_settlements(args: argparse.Namespace) -> int:
+    result = verify_settlement_ledger(args.ledger)
+    _print_json(
+        {
+            "ok": result["ok"],
+            "record_count": result["record_count"],
+            "head_hash": result["head_hash"],
+            "last_recorded_at": result["last_recorded_at"],
+            "errors": result["errors"],
+        }
+    )
+    return 0 if result["ok"] else 1
+
+
+def cmd_settlement_summary(args: argparse.Namespace) -> int:
+    result = summarize_settlement_ledger(args.ledger)
+    _print_json(result)
+    return 0 if result["ok"] else 1
+
+
 def cmd_head(args: argparse.Namespace) -> int:
     result = verify_ledger(args.ledger)
     print(result["head_hash"])
@@ -247,6 +308,26 @@ def build_parser() -> argparse.ArgumentParser:
     summary_p = subparsers.add_parser("summary", help="Summarize a verified candidate ledger")
     summary_p.add_argument("--ledger", required=True, help="Append-only ledger JSONL path")
     summary_p.set_defaults(func=cmd_summary)
+
+    settle_p = subparsers.add_parser("settle", help="Append a settlement/post-mortem record")
+    settle_p.add_argument("--journal-ledger", required=True, help="Candidate journal JSONL path")
+    settle_p.add_argument("--settlement-ledger", required=True, help="Settlement ledger JSONL path")
+    settle_p.add_argument("--candidate-id", required=True, help="Candidate id to settle")
+    settle_p.add_argument("--actual-result", required=True, choices=["YES", "NO", "VOID", "yes", "no", "void"], help="Actual contract result")
+    settle_p.add_argument("--settled-at", required=True, help="ISO timestamp when settlement became known")
+    settle_p.add_argument("--recorded-at", default=None, help="Optional ISO timestamp when this post-mortem is recorded")
+    settle_p.add_argument("--settlement-id", default=None, help="Optional fixed settlement id")
+    settle_p.add_argument("--notes", default="", help="Post-mortem notes")
+    settle_p.add_argument("--mistake-tag", action="append", default=[], help="Optional mistake tag; repeat for multiple tags")
+    settle_p.set_defaults(func=cmd_settle)
+
+    verify_settlements_p = subparsers.add_parser("verify-settlements", help="Verify a settlement ledger")
+    verify_settlements_p.add_argument("--ledger", required=True, help="Settlement ledger JSONL path")
+    verify_settlements_p.set_defaults(func=cmd_verify_settlements)
+
+    settlement_summary_p = subparsers.add_parser("settlement-summary", help="Summarize a settlement ledger")
+    settlement_summary_p.add_argument("--ledger", required=True, help="Settlement ledger JSONL path")
+    settlement_summary_p.set_defaults(func=cmd_settlement_summary)
 
     head_p = subparsers.add_parser("head", help="Print the current ledger head hash")
     head_p.add_argument("--ledger", required=True, help="Append-only ledger JSONL path")
