@@ -5,6 +5,11 @@ import pytest
 
 from macroedge.contracts import build_contract_record
 from macroedge.app import journal as journal_cli
+from macroedge.candidate_builder import (
+    CandidateBuilderError,
+    build_candidate_from_observation,
+    build_trade_draft_from_observation,
+)
 from macroedge.journal import TradeJournalError, build_trade_candidate, canonical_json
 from macroedge.ledger import (
     GENESIS_HASH,
@@ -111,6 +116,80 @@ def test_end_to_end_contract_to_candidate_lineage():
 
     assert candidate["contract_observation"]["observation_id"] == "linked-contract"
     assert candidate["contract_observation"]["contract_hash"] == contract["contract_hash"]
+
+
+def test_build_trade_draft_from_observation_copies_lineage_and_market_facts():
+    observation = build_contract_record(
+        load_contract_example(),
+        observation_id="obs-from-contract",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+
+    draft = build_trade_draft_from_observation(
+        observation,
+        side="YES",
+        fair_probability=0.53,
+        thesis_summary="Manual analyst thesis, not an automated recommendation.",
+        data_sources=["https://www.bls.gov/cpi/"],
+        active_bankroll_usd=400.0,
+        planned_risk_usd=20.0,
+    )
+    candidate = build_trade_candidate(
+        draft,
+        created_at="2026-07-15T02:00:00+00:00",
+        candidate_id="from-observation",
+    )
+
+    assert draft["contract_observation"]["observation_id"] == "obs-from-contract"
+    assert draft["contract_observation"]["contract_hash"] == observation["contract_hash"]
+    assert draft["market"]["entry_price"] == 0.42
+    assert draft["thesis"]["evidence_as_of"] == observation["observed_at"]
+    assert candidate["candidate_id"] == "from-observation"
+    assert candidate["thesis"]["edge_percentage_points"] == 11.0
+
+
+def test_build_trade_draft_from_observation_supports_no_side_complement():
+    observation = build_contract_record(
+        load_contract_example(),
+        observation_id="obs-no-side",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+
+    candidate = build_candidate_from_observation(
+        observation,
+        side="NO",
+        fair_probability=0.67,
+        thesis_summary="Manual NO-side thesis.",
+        data_sources=["https://www.bls.gov/cpi/"],
+        active_bankroll_usd=400.0,
+        planned_risk_usd=20.0,
+        created_at="2026-07-15T02:00:00+00:00",
+        candidate_id="no-side",
+    )
+
+    assert candidate["market"]["side"] == "NO"
+    assert candidate["market"]["entry_price"] == 0.58
+    assert candidate["thesis"]["edge"] == 0.09
+
+
+def test_build_trade_draft_from_observation_rejects_tampered_observation():
+    observation = build_contract_record(
+        load_contract_example(),
+        observation_id="tampered-observation",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    observation["prices"]["yes_ask"] = 0.90
+
+    with pytest.raises(CandidateBuilderError, match="verification failed"):
+        build_trade_draft_from_observation(
+            observation,
+            side="YES",
+            fair_probability=0.53,
+            thesis_summary="Manual thesis.",
+            data_sources=["https://www.bls.gov/cpi/"],
+            active_bankroll_usd=400.0,
+            planned_risk_usd=20.0,
+        )
 
 
 def test_build_trade_candidate_rejects_non_iso_release_datetime():
@@ -304,6 +383,98 @@ def test_cli_validate_append_verify_head(tmp_path, capsys):
 
     assert journal_cli.main(["head", "--ledger", str(ledger)]) == 0
     assert len(capsys.readouterr().out.strip()) == 64
+
+
+def test_cli_draft_from_observation_writes_valid_candidate_draft(tmp_path, capsys):
+    observation_path = tmp_path / "observation.json"
+    output = tmp_path / "candidate-draft.json"
+    observation = build_contract_record(
+        load_contract_example(),
+        observation_id="cli-observation",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    observation_path.write_text(json.dumps(observation), encoding="utf-8")
+
+    assert journal_cli.main(
+        [
+            "draft-from-observation",
+            "--input",
+            str(observation_path),
+            "--output",
+            str(output),
+            "--side",
+            "YES",
+            "--fair-probability",
+            "0.53",
+            "--thesis-summary",
+            "Manual CPI thesis from cited sources.",
+            "--data-source",
+            "https://www.bls.gov/cpi/",
+            "--active-bankroll-usd",
+            "400",
+            "--planned-risk-usd",
+            "20",
+            "--created-at",
+            "2026-07-15T02:00:00+00:00",
+            "--candidate-id",
+            "cli-draft",
+        ]
+    ) == 0
+    out = capsys.readouterr().out
+    assert '"edge_percentage_points": 11.0' in out
+
+    draft = json.loads(output.read_text(encoding="utf-8"))
+    assert draft["contract_observation"]["observation_id"] == "cli-observation"
+    assert draft["market"]["entry_price"] == 0.42
+
+    assert journal_cli.main(
+        [
+            "validate",
+            "--input",
+            str(output),
+            "--created-at",
+            "2026-07-15T02:00:00+00:00",
+            "--candidate-id",
+            "cli-draft",
+        ]
+    ) == 0
+
+
+def test_cli_draft_from_observation_rejects_weak_edge_and_writes_nothing(tmp_path, capsys):
+    observation_path = tmp_path / "observation.json"
+    output = tmp_path / "candidate-draft.json"
+    observation = build_contract_record(
+        load_contract_example(),
+        observation_id="cli-weak-edge",
+        observed_at="2026-07-14T20:00:00-05:00",
+    )
+    observation_path.write_text(json.dumps(observation), encoding="utf-8")
+
+    assert journal_cli.main(
+        [
+            "draft-from-observation",
+            "--input",
+            str(observation_path),
+            "--output",
+            str(output),
+            "--side",
+            "YES",
+            "--fair-probability",
+            "0.47",
+            "--thesis-summary",
+            "Weak edge thesis.",
+            "--data-source",
+            "https://www.bls.gov/cpi/",
+            "--active-bankroll-usd",
+            "400",
+            "--planned-risk-usd",
+            "20",
+            "--created-at",
+            "2026-07-15T02:00:00+00:00",
+        ]
+    ) == 1
+    assert "edge" in capsys.readouterr().err
+    assert not output.exists()
 
 
 def test_cli_verify_fails_on_tampered_ledger(tmp_path, capsys):

@@ -142,6 +142,19 @@ fees, spread, and slippage; the operating plan still requires a real-world
 8-10 percentage-point edge after those costs.
 
 ```bash
+# Seed a candidate draft from a verified contract observation
+py -3 macroedge/app/journal.py draft-from-observation \
+  --input macroedge/contract-observation-kalshi.example.json \
+  --output macroedge/trade-draft-from-observation.example.json \
+  --side YES \
+  --fair-probability 0.53 \
+  --thesis-summary "Manual thesis from cited macro sources; not an automated recommendation." \
+  --data-source https://www.bls.gov/cpi/ \
+  --active-bankroll-usd 400 \
+  --planned-risk-usd 20 \
+  --created-at 2026-07-15T02:00:00+00:00 \
+  --candidate-id example-candidate
+
 # Validate a draft (see macroedge/examples/trade-draft.example.json)
 py -3 macroedge/app/journal.py validate \
   --input macroedge/examples/trade-draft.example.json \
