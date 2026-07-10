@@ -7,6 +7,7 @@ import json
 import os
 import re
 import threading
+from collections import Counter
 from datetime import datetime
 from typing import Any
 
@@ -152,6 +153,52 @@ def verify_ledger(ledger_path: str) -> dict[str, Any]:
         count=count,
         last_observed_at=previous_observed_at.isoformat() if previous_observed_at else None,
     )
+
+
+def summarize_ledger(ledger_path: str) -> dict[str, Any]:
+    """Return a compact, read-only summary of a contract observation ledger."""
+    verification = verify_ledger(ledger_path)
+    summary = {
+        "ok": verification["ok"],
+        "record_count": verification["record_count"],
+        "head_hash": verification["head_hash"],
+        "first_observed_at": None,
+        "last_observed_at": verification["last_observed_at"],
+        "event_types": {},
+        "platforms": {},
+        "statuses": {},
+        "implied_probability_sources": {},
+        "errors": verification["errors"],
+    }
+    if not verification["ok"] or verification["record_count"] == 0:
+        return summary
+
+    event_types: Counter[str] = Counter()
+    platforms: Counter[str] = Counter()
+    statuses: Counter[str] = Counter()
+    sources: Counter[str] = Counter()
+    first_observed_at = None
+
+    with open(os.path.abspath(ledger_path), "r", encoding="utf-8") as handle:
+        for line in handle:
+            record = json.loads(line)
+            observed_at = record.get("observed_at")
+            if first_observed_at is None:
+                first_observed_at = observed_at
+            event = record.get("event", {})
+            market = record.get("market", {})
+            prices = record.get("prices", {})
+            event_types[str(event.get("event_type", "unknown"))] += 1
+            platforms[str(market.get("platform", "unknown"))] += 1
+            statuses[str(record.get("status", "unknown"))] += 1
+            sources[str(prices.get("implied_probability_source", "unknown"))] += 1
+
+    summary["first_observed_at"] = first_observed_at
+    summary["event_types"] = dict(sorted(event_types.items()))
+    summary["platforms"] = dict(sorted(platforms.items()))
+    summary["statuses"] = dict(sorted(statuses.items()))
+    summary["implied_probability_sources"] = dict(sorted(sources.items()))
+    return summary
 
 
 def _ledger_hash(record: dict[str, Any]) -> str:
