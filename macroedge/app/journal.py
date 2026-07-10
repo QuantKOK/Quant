@@ -7,6 +7,7 @@ Subcommands:
 * ``draft-from-observation --input PATH``   - seed a candidate draft from an observation
 * ``append --input PATH --ledger PATH``     - append a validated candidate (hash-chained)
 * ``verify --ledger PATH``                  - verify the ledger hash chain and rules
+* ``summary --ledger PATH``                 - summarize a verified candidate ledger
 * ``head --ledger PATH``                    - print the current ledger head hash
 
 This is a probability-research journal for macro event contracts. It is offline
@@ -31,7 +32,7 @@ from macroedge.candidate_builder import (  # type: ignore
     build_trade_draft_from_observation,
 )
 from macroedge.journal import TradeJournalError, build_trade_candidate  # type: ignore
-from macroedge.ledger import append_candidate, verify_ledger  # type: ignore
+from macroedge.ledger import append_candidate, summarize_ledger, verify_ledger  # type: ignore
 
 
 def _print_json(payload: object) -> None:
@@ -178,6 +179,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_summary(args: argparse.Namespace) -> int:
+    result = summarize_ledger(args.ledger)
+    _print_json(result)
+    return 0 if result["ok"] else 1
+
+
 def cmd_head(args: argparse.Namespace) -> int:
     result = verify_ledger(args.ledger)
     print(result["head_hash"])
@@ -236,6 +243,10 @@ def build_parser() -> argparse.ArgumentParser:
     verify_p = subparsers.add_parser("verify", help="Verify the ledger hash chain and rules")
     verify_p.add_argument("--ledger", required=True, help="Append-only ledger JSONL path")
     verify_p.set_defaults(func=cmd_verify)
+
+    summary_p = subparsers.add_parser("summary", help="Summarize a verified candidate ledger")
+    summary_p.add_argument("--ledger", required=True, help="Append-only ledger JSONL path")
+    summary_p.set_defaults(func=cmd_summary)
 
     head_p = subparsers.add_parser("head", help="Print the current ledger head hash")
     head_p.add_argument("--ledger", required=True, help="Append-only ledger JSONL path")

@@ -169,6 +169,9 @@ py -3 macroedge/app/journal.py append \
 # Verify the whole chain (hashes, previous_hash links, ids, ordering, edge/risk)
 py -3 macroedge/app/journal.py verify --ledger macroedge/ledger.jsonl
 
+# Summarize candidate count, risk, edge, event mix, side mix, and post-mortem status
+py -3 macroedge/app/journal.py summary --ledger macroedge/ledger.jsonl
+
 # Print the current ledger head hash
 py -3 macroedge/app/journal.py head --ledger macroedge/ledger.jsonl
 ```
