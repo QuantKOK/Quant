@@ -9,6 +9,7 @@ Subcommands:
 * ``verify --ledger PATH``                  - verify the ledger hash chain and rules
 * ``summary --ledger PATH``                 - summarize a verified candidate ledger
 * ``settle --candidate-id ID``              - append a settlement/post-mortem record
+* ``performance --journal-ledger J --settlement-ledger S`` - reconcile results
 * ``head --ledger PATH``                    - print the current ledger head hash
 
 This is a probability-research journal for macro event contracts. It is offline
@@ -34,6 +35,7 @@ from macroedge.candidate_builder import (  # type: ignore
 )
 from macroedge.journal import TradeJournalError, build_trade_candidate  # type: ignore
 from macroedge.ledger import append_candidate, summarize_ledger, verify_ledger  # type: ignore
+from macroedge.performance import summarize_performance  # type: ignore
 from macroedge.settlement_ledger import (  # type: ignore
     append_settlement,
     find_candidate_in_ledger,
@@ -246,6 +248,12 @@ def cmd_settlement_summary(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_performance(args: argparse.Namespace) -> int:
+    result = summarize_performance(args.journal_ledger, args.settlement_ledger)
+    _print_json(result)
+    return 0 if result["ok"] else 1
+
+
 def cmd_head(args: argparse.Namespace) -> int:
     result = verify_ledger(args.ledger)
     print(result["head_hash"])
@@ -328,6 +336,11 @@ def build_parser() -> argparse.ArgumentParser:
     settlement_summary_p = subparsers.add_parser("settlement-summary", help="Summarize a settlement ledger")
     settlement_summary_p.add_argument("--ledger", required=True, help="Settlement ledger JSONL path")
     settlement_summary_p.set_defaults(func=cmd_settlement_summary)
+
+    performance_p = subparsers.add_parser("performance", help="Reconcile candidate and settlement ledgers")
+    performance_p.add_argument("--journal-ledger", required=True, help="Candidate journal JSONL path")
+    performance_p.add_argument("--settlement-ledger", required=True, help="Settlement ledger JSONL path")
+    performance_p.set_defaults(func=cmd_performance)
 
     head_p = subparsers.add_parser("head", help="Print the current ledger head hash")
     head_p.add_argument("--ledger", required=True, help="Append-only ledger JSONL path")

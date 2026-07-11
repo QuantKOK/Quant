@@ -19,6 +19,7 @@ from macroedge.ledger import (
     summarize_ledger,
     verify_ledger,
 )
+from macroedge.performance import summarize_performance
 from macroedge.settlement_ledger import (
     SettlementLedgerError,
     append_settlement,
@@ -452,6 +453,93 @@ def test_verify_settlement_ledger_detects_tampering(tmp_path):
     assert any("mismatch" in error or "outcome" in error for error in result["errors"])
 
 
+# --- Performance reconciliation ------------------------------------------------
+
+
+def test_summarize_performance_reconciles_settled_and_unsettled_candidates(tmp_path):
+    journal = tmp_path / "journal.jsonl"
+    settlements = tmp_path / "settlements.jsonl"
+    first = append_candidate(str(journal), load_example(), created_at=T1, candidate_id="perf-1")
+    second_draft = load_example()
+    second_draft["event"]["event_type"] = "fed_decision"
+    second_draft["market"]["side"] = "NO"
+    second_draft["market"]["entry_price"] = 0.35
+    second_draft["thesis"]["fair_probability"] = 0.45
+    second_draft["risk"]["planned_risk_usd"] = 10.0
+    append_candidate(str(journal), second_draft, created_at=T2, candidate_id="perf-2")
+    append_settlement(
+        str(settlements),
+        first,
+        actual_result="YES",
+        settled_at="2026-07-15T12:00:00+00:00",
+        recorded_at="2026-07-15T13:00:00+00:00",
+        settlement_id="perf-settlement-1",
+    )
+
+    summary = summarize_performance(str(journal), str(settlements))
+
+    assert summary["ok"] is True
+    assert summary["candidate_count"] == 2
+    assert summary["settlement_count"] == 1
+    assert summary["settled_count"] == 1
+    assert summary["unsettled_count"] == 1
+    assert summary["won_count"] == 1
+    assert summary["lost_count"] == 0
+    assert summary["void_count"] == 0
+    assert summary["win_rate"] == 1.0
+    assert summary["average_brier_score"] == 0.2209
+    assert summary["planned_risk_usd"] == 30.0
+    assert summary["settled_planned_risk_usd"] == 20.0
+    assert summary["unsettled_planned_risk_usd"] == 10.0
+    assert summary["average_candidate_edge_percentage_points"] == 10.5
+    assert summary["average_settled_edge_percentage_points"] == 11.0
+    assert summary["event_types"] == {"cpi": 1, "fed_decision": 1}
+    assert summary["sides"] == {"NO": 1, "YES": 1}
+    assert summary["outcomes"] == {"won": 1}
+    assert summary["actual_results"] == {"YES": 1}
+    assert summary["unsettled_candidate_ids"] == ["perf-2"]
+
+
+def test_summarize_performance_rejects_settlement_candidate_hash_mismatch(tmp_path):
+    journal = tmp_path / "journal.jsonl"
+    settlements = tmp_path / "settlements.jsonl"
+    append_candidate(str(journal), load_example(), created_at=T1, candidate_id="perf-mismatch")
+    changed = load_example()
+    changed["thesis"]["fair_probability"] = 0.54
+    mismatched_candidate = build_trade_candidate(
+        changed,
+        created_at=T1,
+        candidate_id="perf-mismatch",
+    )
+    append_settlement(
+        str(settlements),
+        mismatched_candidate,
+        actual_result="YES",
+        settled_at="2026-07-15T12:00:00+00:00",
+        recorded_at="2026-07-15T13:00:00+00:00",
+        settlement_id="perf-mismatch-settlement",
+    )
+
+    summary = summarize_performance(str(journal), str(settlements))
+
+    assert summary["ok"] is False
+    assert any("candidate_hash does not match" in error for error in summary["errors"])
+
+
+def test_summarize_performance_propagates_invalid_ledger_errors(tmp_path):
+    journal = tmp_path / "journal.jsonl"
+    settlements = tmp_path / "settlements.jsonl"
+    append_candidate(str(journal), load_example(), created_at=T1, candidate_id="perf-invalid")
+    settlements.write_text("not json\n", encoding="utf-8")
+
+    summary = summarize_performance(str(journal), str(settlements))
+
+    assert summary["ok"] is False
+    assert summary["settlement_count"] == 0
+    assert any(error.startswith("settlement ledger:") for error in summary["errors"])
+    assert summary["outcomes"] == {}
+
+
 def test_append_rejects_weak_edge(tmp_path):
     ledger = tmp_path / "ledger.jsonl"
     draft = load_example()
@@ -727,6 +815,20 @@ def test_cli_settle_verify_and_summary(tmp_path, capsys):
     assert '"won": 1' in summary_output
     assert '"average_brier_score": 0.2209' in summary_output
 
+    assert journal_cli.main(
+        [
+            "performance",
+            "--journal-ledger",
+            str(journal),
+            "--settlement-ledger",
+            str(settlements),
+        ]
+    ) == 0
+    performance_output = capsys.readouterr().out
+    assert '"settled_count": 1' in performance_output
+    assert '"unsettled_count": 0' in performance_output
+    assert '"win_rate": 1.0' in performance_output
+
 
 def test_cli_settle_reports_clean_error_on_bad_timestamps(tmp_path, capsys):
     journal = tmp_path / "journal.jsonl"
@@ -813,6 +915,7 @@ def test_settlement_modules_are_offline_only():
     for path in (
         Path("macroedge/settlements.py"),
         Path("macroedge/settlement_ledger.py"),
+        Path("macroedge/performance.py"),
     ):
         source = path.read_text(encoding="utf-8")
         for token in banned:
