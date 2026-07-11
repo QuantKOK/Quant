@@ -197,6 +197,11 @@ py -3 macroedge/app/journal.py performance \
   --output macroedge/performance-summary.csv \
   --format csv
 
+# Render a portable static dashboard from either the JSON or CSV export
+py -3 macroedge/app/journal.py performance-dashboard \
+  --input macroedge/performance-summary.csv \
+  --output macroedge/performance-dashboard.html
+
 # Print the current ledger head hash
 py -3 macroedge/app/journal.py head --ledger macroedge/ledger.jsonl
 ```
@@ -210,7 +215,9 @@ candidate. `performance` verifies both ledgers first, then reports
 settled/unsettled candidates, win/loss/void counts, win rate, average Brier
 score, planned risk, edge averages, and event/side mixes. Add
 `--output <path> --format json|csv` to write the same scorecard as a durable
-artifact.
+artifact. `performance-dashboard` renders either export format into a
+self-contained local HTML dashboard for review; it has no network/runtime
+dependency and is still research-only.
 
 ## Legacy Quant
 

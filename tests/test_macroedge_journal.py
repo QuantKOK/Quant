@@ -11,6 +11,11 @@ from macroedge.candidate_builder import (
     build_candidate_from_observation,
     build_trade_draft_from_observation,
 )
+from macroedge.dashboard import (
+    build_performance_dashboard_html,
+    load_performance_summary,
+    render_performance_dashboard,
+)
 from macroedge.journal import TradeJournalError, build_trade_candidate, canonical_json
 from macroedge.ledger import (
     GENESIS_HASH,
@@ -582,6 +587,83 @@ def test_export_performance_summary_writes_json_and_csv(tmp_path):
     assert rows[0]["unsettled_candidate_ids"] == '["perf-2"]'
 
 
+def test_load_and_render_performance_dashboard_from_json_and_csv(tmp_path):
+    summary = {
+        "ok": True,
+        "candidate_count": 2,
+        "settlement_count": 1,
+        "settled_count": 1,
+        "unsettled_count": 1,
+        "won_count": 1,
+        "lost_count": 0,
+        "void_count": 0,
+        "win_rate": 1.0,
+        "average_brier_score": 0.2209,
+        "planned_risk_usd": 30.0,
+        "settled_planned_risk_usd": 20.0,
+        "unsettled_planned_risk_usd": 10.0,
+        "average_candidate_edge_percentage_points": 10.5,
+        "average_settled_edge_percentage_points": 11.0,
+        "event_types": {"cpi": 1, "fed_decision": 1},
+        "sides": {"NO": 1, "YES": 1},
+        "outcomes": {"won": 1},
+        "actual_results": {"YES": 1},
+        "unsettled_candidate_ids": ["perf-2"],
+        "errors": [],
+    }
+    json_path = tmp_path / "performance.json"
+    csv_path = tmp_path / "performance.csv"
+    html_path = tmp_path / "dashboard.html"
+    export_performance_summary(summary, str(json_path), file_format="json")
+    export_performance_summary(summary, str(csv_path), file_format="csv")
+
+    assert load_performance_summary(str(json_path)) == summary
+    assert load_performance_summary(str(csv_path)) == summary
+
+    output = render_performance_dashboard(load_performance_summary(str(csv_path)), str(html_path))
+
+    assert output == str(html_path)
+    html = html_path.read_text(encoding="utf-8")
+    assert "MacroEdge performance dashboard" in html
+    assert "2 candidates" in html
+    assert "100.0%" in html
+    assert "perf-2" in html
+    assert "Research use only" in html
+
+
+def test_performance_dashboard_escapes_html_and_renders_validation_errors():
+    summary = {
+        "ok": False,
+        "candidate_count": 1,
+        "settlement_count": 0,
+        "settled_count": 0,
+        "unsettled_count": 1,
+        "won_count": 0,
+        "lost_count": 0,
+        "void_count": 0,
+        "win_rate": None,
+        "average_brier_score": None,
+        "planned_risk_usd": 20.0,
+        "settled_planned_risk_usd": 0.0,
+        "unsettled_planned_risk_usd": 20.0,
+        "average_candidate_edge_percentage_points": 11.0,
+        "average_settled_edge_percentage_points": None,
+        "event_types": {"<script>": 1},
+        "sides": {"YES": 1},
+        "outcomes": {},
+        "actual_results": {},
+        "unsettled_candidate_ids": ["bad<script>"],
+        "errors": ["candidate ledger: <edited>"],
+    }
+
+    html = build_performance_dashboard_html(summary)
+
+    assert "Needs review" in html
+    assert "&lt;script&gt;" in html
+    assert "candidate ledger: &lt;edited&gt;" in html
+    assert "<script>" not in html
+
+
 def test_append_rejects_weak_edge(tmp_path):
     ledger = tmp_path / "ledger.jsonl"
     draft = load_example()
@@ -906,6 +988,20 @@ def test_cli_settle_verify_and_summary(tmp_path, capsys):
     assert rows[0]["settled_count"] == "1"
     assert rows[0]["outcomes"] == '{"won":1}'
 
+    dashboard = tmp_path / "performance-dashboard.html"
+    assert journal_cli.main(
+        [
+            "performance-dashboard",
+            "--input",
+            str(performance_csv),
+            "--output",
+            str(dashboard),
+        ]
+    ) == 0
+    dashboard_output = capsys.readouterr().out
+    assert '"candidate_count": 1' in dashboard_output
+    assert "MacroEdge performance dashboard" in dashboard.read_text(encoding="utf-8")
+
 
 def test_cli_settle_reports_clean_error_on_bad_timestamps(tmp_path, capsys):
     journal = tmp_path / "journal.jsonl"
@@ -993,6 +1089,7 @@ def test_settlement_modules_are_offline_only():
         Path("macroedge/settlements.py"),
         Path("macroedge/settlement_ledger.py"),
         Path("macroedge/performance.py"),
+        Path("macroedge/dashboard.py"),
     ):
         source = path.read_text(encoding="utf-8")
         for token in banned:
