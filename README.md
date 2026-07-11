@@ -185,6 +185,11 @@ py -3 macroedge/app/journal.py settle \
 py -3 macroedge/app/journal.py verify-settlements --ledger macroedge/settlements.jsonl
 py -3 macroedge/app/journal.py settlement-summary --ledger macroedge/settlements.jsonl
 
+# Reconcile candidates vs settlements into a performance scorecard
+py -3 macroedge/app/journal.py performance \
+  --journal-ledger macroedge/ledger.jsonl \
+  --settlement-ledger macroedge/settlements.jsonl
+
 # Print the current ledger head hash
 py -3 macroedge/app/journal.py head --ledger macroedge/ledger.jsonl
 ```
@@ -193,6 +198,10 @@ py -3 macroedge/app/journal.py head --ledger macroedge/ledger.jsonl
 `--candidate-id` for reproducible entries. `verify` reports every issue it finds:
 invalid JSON, `ledger_hash`/content mismatch, `previous_hash` break, duplicate
 `candidate_id`, non-monotonic `created_at`, and schema/risk/edge violations.
+`settle` appends a separate post-mortem record instead of rewriting the original
+candidate. `performance` verifies both ledgers first, then reports
+settled/unsettled candidates, win/loss/void counts, win rate, average Brier
+score, planned risk, edge averages, and event/side mixes.
 
 ## Legacy Quant
 
