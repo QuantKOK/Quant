@@ -22,7 +22,14 @@ if ($Test) {
 }
 
 if ($RunExample) {
-    .\.venv\Scripts\python.exe M1
+    # End-to-end offline MacroEdge demo (contract -> candidate -> settlement ->
+    # performance -> dashboard). Writes only to a throwaway temp directory.
+    $env:PYTHONIOENCODING = "utf-8"
+    if (Test-Path .\.venv\Scripts\python.exe) {
+        .\.venv\Scripts\python.exe demo.py
+    } else {
+        py -3 demo.py
+    }
 }
 
 if (-not ($CreateVenv -or $Install -or $Test -or $RunExample)) {

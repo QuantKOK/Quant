@@ -1,0 +1,5 @@
+# Dependencies for the retired pre-pivot trading utilities in this folder
+# (M1, strategy.py). NOT required by MacroEdge. Kept only so the archived
+# code remains runnable for reference.
+pandas>=1.5.0
+numpy>=1.24.0
