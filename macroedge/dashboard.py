@@ -20,6 +20,7 @@ NESTED_FIELDS = {
     "sides",
     "outcomes",
     "actual_results",
+    "calibration_buckets",
     "unsettled_candidate_ids",
     "errors",
 }
@@ -105,6 +106,7 @@ def build_performance_dashboard_html(summary: dict[str, Any]) -> str:
     avg_settled_edge = summary.get("average_settled_edge_percentage_points")
     unsettled_ids = summary.get("unsettled_candidate_ids") or []
     errors = summary.get("errors") or []
+    calibration_buckets = summary.get("calibration_buckets") or []
 
     return f"""<!doctype html>
 <html lang="en">
@@ -184,6 +186,12 @@ def build_performance_dashboard_html(summary: dict[str, Any]) -> str:
     </section>
 
     <section class="section">
+      <h2>Calibration by probability bucket</h2>
+      <p>Settled non-void candidates only. Positive calibration error means outcomes happened more often than predicted; negative means they happened less often.</p>
+      {_calibration_table(calibration_buckets)}
+    </section>
+
+    <section class="section">
       <h2>Unresolved candidates</h2>
       {_unsettled_list(unsettled_ids)}
     </section>
@@ -197,6 +205,7 @@ def build_performance_dashboard_html(summary: dict[str, Any]) -> str:
           <tr><td>Settlement count</td><td>Post-mortem settlement records in the verified settlement ledger</td></tr>
           <tr><td>Win rate</td><td>Won / (won + lost), excluding void outcomes</td></tr>
           <tr><td>Brier score</td><td>Mean squared probability error for non-void settled candidates</td></tr>
+          <tr><td>Calibration buckets</td><td>Decile buckets by fair probability for the selected side; void outcomes excluded</td></tr>
         </tbody>
       </table>
     </section>
@@ -220,7 +229,7 @@ def _summary_from_csv_row(row: dict[str, str]) -> dict[str, Any]:
         elif key in FLOAT_FIELDS:
             summary[key] = float(value) if value else None
         elif key in NESTED_FIELDS:
-            summary[key] = json.loads(value) if value else ([] if key in {"unsettled_candidate_ids", "errors"} else {})
+            summary[key] = json.loads(value) if value else ([] if key in {"calibration_buckets", "unsettled_candidate_ids", "errors"} else {})
         else:
             summary[key] = value
     return summary
@@ -264,6 +273,27 @@ def _breakdown_table(title: str, values: dict[str, Any], denominator: int) -> st
         <tbody>{body}</tbody>
       </table>
     </section>"""
+
+
+def _calibration_table(buckets: list[dict[str, Any]]) -> str:
+    if not buckets:
+        return "<p>No non-void settled candidates yet, so calibration is not available.</p>"
+    rows = []
+    for bucket in buckets:
+        rows.append(
+            f"""<tr>
+              <td>{_escape(str(bucket.get("bucket", "")))}</td>
+              <td>{_number(bucket.get("settled_count"))}</td>
+              <td>{_percent(bucket.get("average_predicted_probability"))}</td>
+              <td>{_percent(bucket.get("actual_win_rate"))}</td>
+              <td>{_signed_points(bucket.get("calibration_error"))}</td>
+              <td>{_number(bucket.get("average_brier_score"), digits=4)}</td>
+            </tr>"""
+        )
+    return f"""<table>
+        <thead><tr><th>Fair-probability bucket</th><th>Settled</th><th>Avg predicted</th><th>Actual win rate</th><th>Error</th><th>Avg Brier</th></tr></thead>
+        <tbody>{"".join(rows)}</tbody>
+      </table>"""
 
 
 def _unsettled_list(values: list[Any]) -> str:
@@ -325,6 +355,15 @@ def _points(value: Any) -> str:
         return "—"
     try:
         return f"{float(value):.1f} pp"
+    except (TypeError, ValueError):
+        return _escape(str(value))
+
+
+def _signed_points(value: Any) -> str:
+    if value is None or value == "":
+        return "—"
+    try:
+        return f"{float(value) * 100:+.1f} pp"
     except (TypeError, ValueError):
         return _escape(str(value))
 

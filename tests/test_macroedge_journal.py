@@ -503,6 +503,20 @@ def test_summarize_performance_reconciles_settled_and_unsettled_candidates(tmp_p
     assert summary["sides"] == {"NO": 1, "YES": 1}
     assert summary["outcomes"] == {"won": 1}
     assert summary["actual_results"] == {"YES": 1}
+    assert summary["calibration_buckets"] == [
+        {
+            "bucket": "50-60%",
+            "lower_probability": 0.5,
+            "upper_probability": 0.6,
+            "settled_count": 1,
+            "average_predicted_probability": 0.53,
+            "actual_win_rate": 1.0,
+            "calibration_error": 0.47,
+            "average_brier_score": 0.2209,
+            "won_count": 1,
+            "lost_count": 0,
+        }
+    ]
     assert summary["unsettled_candidate_ids"] == ["perf-2"]
 
 
@@ -567,6 +581,20 @@ def test_export_performance_summary_writes_json_and_csv(tmp_path):
         "sides": {"NO": 1, "YES": 1},
         "outcomes": {"won": 1},
         "actual_results": {"YES": 1},
+        "calibration_buckets": [
+            {
+                "bucket": "50-60%",
+                "lower_probability": 0.5,
+                "upper_probability": 0.6,
+                "settled_count": 1,
+                "average_predicted_probability": 0.53,
+                "actual_win_rate": 1.0,
+                "calibration_error": 0.47,
+                "average_brier_score": 0.2209,
+                "won_count": 1,
+                "lost_count": 0,
+            }
+        ],
         "unsettled_candidate_ids": ["perf-2"],
         "errors": [],
     }
@@ -584,6 +612,7 @@ def test_export_performance_summary_writes_json_and_csv(tmp_path):
     assert rows[0]["candidate_count"] == "2"
     assert rows[0]["win_rate"] == "1.0"
     assert rows[0]["event_types"] == '{"cpi":1,"fed_decision":1}'
+    assert '"calibration_error":0.47' in rows[0]["calibration_buckets"]
     assert rows[0]["unsettled_candidate_ids"] == '["perf-2"]'
 
 
@@ -608,6 +637,20 @@ def test_load_and_render_performance_dashboard_from_json_and_csv(tmp_path):
         "sides": {"NO": 1, "YES": 1},
         "outcomes": {"won": 1},
         "actual_results": {"YES": 1},
+        "calibration_buckets": [
+            {
+                "bucket": "50-60%",
+                "lower_probability": 0.5,
+                "upper_probability": 0.6,
+                "settled_count": 1,
+                "average_predicted_probability": 0.53,
+                "actual_win_rate": 1.0,
+                "calibration_error": 0.47,
+                "average_brier_score": 0.2209,
+                "won_count": 1,
+                "lost_count": 0,
+            }
+        ],
         "unsettled_candidate_ids": ["perf-2"],
         "errors": [],
     }
@@ -627,6 +670,8 @@ def test_load_and_render_performance_dashboard_from_json_and_csv(tmp_path):
     assert "MacroEdge performance dashboard" in html
     assert "2 candidates" in html
     assert "100.0%" in html
+    assert "Calibration by probability bucket" in html
+    assert "+47.0 pp" in html
     assert "perf-2" in html
     assert "Research use only" in html
 
@@ -652,6 +697,7 @@ def test_performance_dashboard_escapes_html_and_renders_validation_errors():
         "sides": {"YES": 1},
         "outcomes": {},
         "actual_results": {},
+        "calibration_buckets": [],
         "unsettled_candidate_ids": ["bad<script>"],
         "errors": ["candidate ledger: <edited>"],
     }

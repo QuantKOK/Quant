@@ -213,11 +213,12 @@ invalid JSON, `ledger_hash`/content mismatch, `previous_hash` break, duplicate
 `settle` appends a separate post-mortem record instead of rewriting the original
 candidate. `performance` verifies both ledgers first, then reports
 settled/unsettled candidates, win/loss/void counts, win rate, average Brier
-score, planned risk, edge averages, and event/side mixes. Add
-`--output <path> --format json|csv` to write the same scorecard as a durable
-artifact. `performance-dashboard` renders either export format into a
-self-contained local HTML dashboard for review; it has no network/runtime
-dependency and is still research-only.
+score, planned risk, edge averages, event/side mixes, and calibration buckets
+that compare fair probabilities against actual non-void outcomes. Add `--output
+<path> --format json|csv` to write the same scorecard as a durable artifact.
+`performance-dashboard` renders either export format into a self-contained local
+HTML dashboard for review; it has no network/runtime dependency and is still
+research-only.
 
 ## Legacy Quant
 
