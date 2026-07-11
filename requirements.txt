@@ -1,3 +1,10 @@
-pandas>=1.5.0
-numpy>=1.24.0
+# MacroEdge runtime: standard library only. No third-party runtime dependencies.
+# The offline research pipeline (contracts, adapters, ledgers, settlements,
+# performance, dashboard) imports nothing outside the Python standard library.
+
+# Test/dev only:
 pytest>=7.0
+
+# Note: the retired pre-pivot trading utilities (now under legacy/) needed
+# pandas/numpy. Those are NOT required by MacroEdge. See legacy/requirements.txt
+# if you specifically want to run the archived strategy code.

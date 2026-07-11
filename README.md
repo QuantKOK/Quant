@@ -20,11 +20,35 @@ Suggested bankroll frame:
 
 See `docs/macroedge_operating_plan.md` for the operating rules.
 
+## Quickstart
+
+MacroEdge is **standard-library only** — no third-party runtime dependencies. To
+see the whole thing work end to end, run the offline demo:
+
+```
+py -3 demo.py
+```
+
+It drives the real CLIs on the bundled example fixtures through the full
+lifecycle — contract observation -> trade candidate -> settlement/post-mortem ->
+performance reconciliation (with calibration buckets) -> static HTML dashboard —
+writing every artifact to a throwaway temp directory (nothing is written into the
+repo) and printing the dashboard path at the end. It is offline only: no network,
+no credentials, no order placement.
+
+Set up a virtualenv and run the test suite (only `pytest` is needed):
+
+```
+.\run.ps1 -CreateVenv -Install -Test      # Windows PowerShell
+.\run.ps1 -RunExample                      # runs demo.py
+```
+
 ## Current code
 
-The new MacroEdge foundation lives in `macroedge/`. The original quant utility
-files and the prior Biotech Risk Scout code remain in place while the project
-pivots.
+The supported system lives in `macroedge/`. Retired pre-pivot trading utilities
+have been moved to `legacy/` (they need pandas/numpy and are not used by
+MacroEdge); the prior Biotech Risk Scout code remains under
+`biotech-risk-scout/`.
 
 ### Market-contract observations
 
