@@ -39,6 +39,7 @@ PERFORMANCE_CSV_FIELDS = [
     "sides",
     "outcomes",
     "actual_results",
+    "calibration_buckets",
     "unsettled_candidate_ids",
     "errors",
 ]
@@ -74,6 +75,7 @@ def summarize_performance(journal_ledger_path: str, settlement_ledger_path: str)
     candidate_edges: list[float] = []
     settled_edges: list[float] = []
     brier_scores: list[float] = []
+    calibration_records: list[dict[str, float]] = []
     planned_risk = 0.0
     settled_planned_risk = 0.0
 
@@ -107,6 +109,13 @@ def summarize_performance(journal_ledger_path: str, settlement_ledger_path: str)
         settled_planned_risk += float(candidate["risk"]["planned_risk_usd"])
         if settlement_payload["brier_score"] is not None:
             brier_scores.append(float(settlement_payload["brier_score"]))
+            calibration_records.append(
+                {
+                    "predicted_probability": float(candidate["thesis"]["fair_probability"]),
+                    "actual": 1.0 if outcome == "won" else 0.0,
+                    "brier_score": float(settlement_payload["brier_score"]),
+                }
+            )
 
     if reconciliation_errors:
         summary["errors"] = reconciliation_errors
@@ -139,6 +148,7 @@ def summarize_performance(journal_ledger_path: str, settlement_ledger_path: str)
             "sides": dict(sorted(sides.items())),
             "outcomes": dict(sorted(outcomes.items())),
             "actual_results": dict(sorted(actual_results.items())),
+            "calibration_buckets": _calibration_buckets(calibration_records),
             "unsettled_candidate_ids": unsettled_ids,
             "errors": [],
         }
@@ -196,6 +206,45 @@ def _average(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 4) if values else None
 
 
+def _calibration_buckets(records: list[dict[str, float]]) -> list[dict[str, Any]]:
+    buckets: list[dict[str, Any]] = []
+    for bucket_index in range(10):
+        lower = bucket_index / 10
+        upper = (bucket_index + 1) / 10
+        if bucket_index == 9:
+            matches = [
+                record
+                for record in records
+                if lower <= record["predicted_probability"] <= upper
+            ]
+        else:
+            matches = [
+                record
+                for record in records
+                if lower <= record["predicted_probability"] < upper
+            ]
+        if not matches:
+            continue
+        avg_predicted = sum(record["predicted_probability"] for record in matches) / len(matches)
+        actual_rate = sum(record["actual"] for record in matches) / len(matches)
+        avg_brier = sum(record["brier_score"] for record in matches) / len(matches)
+        buckets.append(
+            {
+                "bucket": f"{int(lower * 100)}-{int(upper * 100)}%",
+                "lower_probability": round(lower, 1),
+                "upper_probability": round(upper, 1),
+                "settled_count": len(matches),
+                "average_predicted_probability": round(avg_predicted, 6),
+                "actual_win_rate": round(actual_rate, 6),
+                "calibration_error": round(actual_rate - avg_predicted, 6),
+                "average_brier_score": round(avg_brier, 6),
+                "won_count": int(sum(record["actual"] for record in matches)),
+                "lost_count": int(len(matches) - sum(record["actual"] for record in matches)),
+            }
+        )
+    return buckets
+
+
 def _csv_row(summary: dict[str, Any]) -> dict[str, Any]:
     return {field: _csv_cell(summary.get(field)) for field in PERFORMANCE_CSV_FIELDS}
 
@@ -231,6 +280,7 @@ def _empty_summary(*, candidate_count: int, settlement_count: int) -> dict[str, 
         "sides": {},
         "outcomes": {},
         "actual_results": {},
+        "calibration_buckets": [],
         "unsettled_candidate_ids": [],
         "errors": [],
     }
