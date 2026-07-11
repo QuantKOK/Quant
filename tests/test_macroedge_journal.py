@@ -19,6 +19,13 @@ from macroedge.ledger import (
     summarize_ledger,
     verify_ledger,
 )
+from macroedge.settlement_ledger import (
+    SettlementLedgerError,
+    append_settlement,
+    summarize_ledger as summarize_settlement_ledger,
+    verify_ledger as verify_settlement_ledger,
+)
+from macroedge.settlements import build_settlement_record, verify_settlement_record
 
 
 EXAMPLE = Path("macroedge/examples/trade-draft.example.json")
@@ -308,6 +315,143 @@ def test_summarize_candidate_ledger_handles_empty_and_invalid_ledgers(tmp_path):
     assert invalid_summary["event_types"] == {}
 
 
+# --- Settlement / post-mortem ledger -----------------------------------------
+
+
+def test_build_settlement_record_calculates_outcome_and_brier_score():
+    candidate = build_trade_candidate(
+        load_example(),
+        created_at=T1,
+        candidate_id="settlement-candidate",
+    )
+
+    settlement = build_settlement_record(
+        candidate,
+        actual_result="YES",
+        settled_at="2026-07-15T12:00:00+00:00",
+        recorded_at="2026-07-15T13:00:00+00:00",
+        settlement_id="settlement-1",
+        notes="Resolved from official source.",
+        mistake_tags=["none"],
+    )
+
+    assert settlement["candidate"]["candidate_id"] == "settlement-candidate"
+    assert settlement["settlement"]["outcome"] == "won"
+    assert settlement["settlement"]["brier_score"] == 0.2209
+    assert len(settlement["settlement_hash"]) == 64
+    assert verify_settlement_record(settlement)["ok"] is True
+
+
+def test_build_settlement_record_handles_lost_and_void_outcomes():
+    candidate = build_trade_candidate(
+        load_example(),
+        created_at=T1,
+        candidate_id="settlement-candidate",
+    )
+
+    lost = build_settlement_record(
+        candidate,
+        actual_result="NO",
+        settled_at="2026-07-15T12:00:00+00:00",
+        recorded_at="2026-07-15T13:00:00+00:00",
+    )
+    void = build_settlement_record(
+        candidate,
+        actual_result="VOID",
+        settled_at="2026-07-15T12:00:00+00:00",
+        recorded_at="2026-07-15T13:00:00+00:00",
+    )
+
+    assert lost["settlement"]["outcome"] == "lost"
+    assert lost["settlement"]["brier_score"] == 0.2809
+    assert void["settlement"]["outcome"] == "void"
+    assert void["settlement"]["brier_score"] is None
+
+
+def test_append_settlement_verify_and_summary_roundtrip(tmp_path):
+    journal = tmp_path / "journal.jsonl"
+    settlements = tmp_path / "settlements.jsonl"
+    candidate = append_candidate(
+        str(journal),
+        load_example(),
+        created_at=T1,
+        candidate_id="settle-1",
+    )
+
+    record = append_settlement(
+        str(settlements),
+        candidate,
+        actual_result="YES",
+        settled_at="2026-07-15T12:00:00+00:00",
+        recorded_at="2026-07-15T13:00:00+00:00",
+        settlement_id="settlement-1",
+    )
+
+    verification = verify_settlement_ledger(str(settlements))
+    assert verification["ok"] is True, verification["errors"]
+    assert verification["record_count"] == 1
+    assert verification["head_hash"] == record["ledger_hash"]
+
+    summary = summarize_settlement_ledger(str(settlements))
+    assert summary["ok"] is True
+    assert summary["outcomes"] == {"won": 1}
+    assert summary["actual_results"] == {"YES": 1}
+    assert summary["event_types"] == {"cpi": 1}
+    assert summary["average_brier_score"] == 0.2209
+
+
+def test_append_settlement_rejects_duplicate_candidate(tmp_path):
+    settlements = tmp_path / "settlements.jsonl"
+    candidate = build_trade_candidate(
+        load_example(),
+        created_at=T1,
+        candidate_id="settle-dup",
+    )
+    append_settlement(
+        str(settlements),
+        candidate,
+        actual_result="YES",
+        settled_at="2026-07-15T12:00:00+00:00",
+        recorded_at="2026-07-15T13:00:00+00:00",
+        settlement_id="settlement-1",
+    )
+
+    with pytest.raises(SettlementLedgerError, match="duplicate settlement"):
+        append_settlement(
+            str(settlements),
+            candidate,
+            actual_result="YES",
+            settled_at="2026-07-15T12:00:00+00:00",
+            recorded_at="2026-07-15T14:00:00+00:00",
+            settlement_id="settlement-2",
+        )
+
+
+def test_verify_settlement_ledger_detects_tampering(tmp_path):
+    settlements = tmp_path / "settlements.jsonl"
+    candidate = build_trade_candidate(
+        load_example(),
+        created_at=T1,
+        candidate_id="settle-tamper",
+    )
+    append_settlement(
+        str(settlements),
+        candidate,
+        actual_result="YES",
+        settled_at="2026-07-15T12:00:00+00:00",
+        recorded_at="2026-07-15T13:00:00+00:00",
+        settlement_id="settlement-1",
+    )
+    record = json.loads(settlements.read_text(encoding="utf-8").splitlines()[0])
+    record["settlement"]["outcome"] = "lost"
+    settlements.write_text(canonical_json(record) + "\n", encoding="utf-8")
+
+    result = verify_settlement_ledger(str(settlements))
+
+    assert result["ok"] is False
+    assert any("mismatch" in error or "outcome" in error for error in result["errors"])
+
+
 def test_append_rejects_weak_edge(tmp_path):
     ledger = tmp_path / "ledger.jsonl"
     draft = load_example()
@@ -530,6 +674,149 @@ def test_cli_draft_from_observation_rejects_weak_edge_and_writes_nothing(tmp_pat
     ) == 1
     assert "edge" in capsys.readouterr().err
     assert not output.exists()
+
+
+def test_cli_settle_verify_and_summary(tmp_path, capsys):
+    journal = tmp_path / "journal.jsonl"
+    settlements = tmp_path / "settlements.jsonl"
+    assert journal_cli.main(
+        [
+            "append",
+            "--input",
+            str(EXAMPLE),
+            "--ledger",
+            str(journal),
+            "--created-at",
+            T1,
+            "--candidate-id",
+            "cli-settle",
+        ]
+    ) == 0
+    capsys.readouterr()
+
+    assert journal_cli.main(
+        [
+            "settle",
+            "--journal-ledger",
+            str(journal),
+            "--settlement-ledger",
+            str(settlements),
+            "--candidate-id",
+            "cli-settle",
+            "--actual-result",
+            "YES",
+            "--settled-at",
+            "2026-07-15T12:00:00+00:00",
+            "--recorded-at",
+            "2026-07-15T13:00:00+00:00",
+            "--settlement-id",
+            "cli-settlement",
+            "--notes",
+            "Resolved from official source.",
+        ]
+    ) == 0
+    settle_output = capsys.readouterr().out
+    assert '"outcome": "won"' in settle_output
+    assert '"brier_score": 0.2209' in settle_output
+
+    assert journal_cli.main(["verify-settlements", "--ledger", str(settlements)]) == 0
+    assert '"record_count": 1' in capsys.readouterr().out
+
+    assert journal_cli.main(["settlement-summary", "--ledger", str(settlements)]) == 0
+    summary_output = capsys.readouterr().out
+    assert '"won": 1' in summary_output
+    assert '"average_brier_score": 0.2209' in summary_output
+
+
+def test_cli_settle_reports_clean_error_on_bad_timestamps(tmp_path, capsys):
+    journal = tmp_path / "journal.jsonl"
+    settlements = tmp_path / "settlements.jsonl"
+    assert journal_cli.main(
+        [
+            "append",
+            "--input",
+            str(EXAMPLE),
+            "--ledger",
+            str(journal),
+            "--created-at",
+            T1,
+            "--candidate-id",
+            "cli-bad-timestamps",
+        ]
+    ) == 0
+    capsys.readouterr()
+
+    assert journal_cli.main(
+        [
+            "settle",
+            "--journal-ledger",
+            str(journal),
+            "--settlement-ledger",
+            str(settlements),
+            "--candidate-id",
+            "cli-bad-timestamps",
+            "--actual-result",
+            "YES",
+            "--settled-at",
+            "2026-07-15T13:00:00+00:00",
+            "--recorded-at",
+            "2026-07-15T12:00:00+00:00",
+        ]
+    ) == 1
+    err = capsys.readouterr().err
+    assert "settle failed:" in err
+    assert "recorded_at cannot be earlier than settled_at" in err
+    assert not settlements.exists()
+
+
+def test_cli_settle_rejects_duplicate_candidate(tmp_path, capsys):
+    journal = tmp_path / "journal.jsonl"
+    settlements = tmp_path / "settlements.jsonl"
+    assert journal_cli.main(
+        [
+            "append",
+            "--input",
+            str(EXAMPLE),
+            "--ledger",
+            str(journal),
+            "--created-at",
+            T1,
+            "--candidate-id",
+            "cli-duplicate-settlement",
+        ]
+    ) == 0
+    capsys.readouterr()
+    settle_args = [
+        "settle",
+        "--journal-ledger",
+        str(journal),
+        "--settlement-ledger",
+        str(settlements),
+        "--candidate-id",
+        "cli-duplicate-settlement",
+        "--actual-result",
+        "YES",
+        "--settled-at",
+        "2026-07-15T12:00:00+00:00",
+        "--recorded-at",
+        "2026-07-15T13:00:00+00:00",
+    ]
+
+    assert journal_cli.main([*settle_args, "--settlement-id", "cli-settlement-1"]) == 0
+    capsys.readouterr()
+    assert journal_cli.main([*settle_args, "--settlement-id", "cli-settlement-2"]) == 1
+    assert "duplicate settlement" in capsys.readouterr().err
+
+
+def test_settlement_modules_are_offline_only():
+    banned = ("urllib", "requests", "http.client", "socket", "httpx", "aiohttp", "websocket")
+    for path in (
+        Path("macroedge/settlements.py"),
+        Path("macroedge/settlement_ledger.py"),
+    ):
+        source = path.read_text(encoding="utf-8")
+        for token in banned:
+            assert token not in source, f"network import '{token}' must not appear in {path}"
 
 
 def test_cli_verify_fails_on_tampered_ledger(tmp_path, capsys):

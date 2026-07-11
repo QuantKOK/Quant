@@ -172,6 +172,19 @@ py -3 macroedge/app/journal.py verify --ledger macroedge/ledger.jsonl
 # Summarize candidate count, risk, edge, event mix, side mix, and post-mortem status
 py -3 macroedge/app/journal.py summary --ledger macroedge/ledger.jsonl
 
+# Append a settlement/post-mortem record without rewriting the candidate journal
+py -3 macroedge/app/journal.py settle \
+  --journal-ledger macroedge/ledger.jsonl \
+  --settlement-ledger macroedge/settlements.jsonl \
+  --candidate-id example-candidate \
+  --actual-result YES \
+  --settled-at 2026-07-15T12:00:00+00:00 \
+  --notes "Resolved from the cited official source."
+
+# Verify and summarize the settlement ledger
+py -3 macroedge/app/journal.py verify-settlements --ledger macroedge/settlements.jsonl
+py -3 macroedge/app/journal.py settlement-summary --ledger macroedge/settlements.jsonl
+
 # Print the current ledger head hash
 py -3 macroedge/app/journal.py head --ledger macroedge/ledger.jsonl
 ```
