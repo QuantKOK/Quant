@@ -1,3 +1,4 @@
+import csv
 import json
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from macroedge.ledger import (
     summarize_ledger,
     verify_ledger,
 )
-from macroedge.performance import summarize_performance
+from macroedge.performance import export_performance_summary, summarize_performance
 from macroedge.settlement_ledger import (
     SettlementLedgerError,
     append_settlement,
@@ -540,6 +541,47 @@ def test_summarize_performance_propagates_invalid_ledger_errors(tmp_path):
     assert summary["outcomes"] == {}
 
 
+def test_export_performance_summary_writes_json_and_csv(tmp_path):
+    summary = {
+        "ok": True,
+        "candidate_count": 2,
+        "settlement_count": 1,
+        "settled_count": 1,
+        "unsettled_count": 1,
+        "won_count": 1,
+        "lost_count": 0,
+        "void_count": 0,
+        "win_rate": 1.0,
+        "average_brier_score": 0.2209,
+        "planned_risk_usd": 30.0,
+        "settled_planned_risk_usd": 20.0,
+        "unsettled_planned_risk_usd": 10.0,
+        "average_candidate_edge_percentage_points": 10.5,
+        "average_settled_edge_percentage_points": 11.0,
+        "event_types": {"cpi": 1, "fed_decision": 1},
+        "sides": {"NO": 1, "YES": 1},
+        "outcomes": {"won": 1},
+        "actual_results": {"YES": 1},
+        "unsettled_candidate_ids": ["perf-2"],
+        "errors": [],
+    }
+    json_path = tmp_path / "performance.json"
+    csv_path = tmp_path / "performance.csv"
+
+    assert export_performance_summary(summary, str(json_path), file_format="json") == str(json_path)
+    assert json.loads(json_path.read_text(encoding="utf-8")) == summary
+
+    assert export_performance_summary(summary, str(csv_path), file_format="csv") == str(csv_path)
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 1
+    assert rows[0]["ok"] == "true"
+    assert rows[0]["candidate_count"] == "2"
+    assert rows[0]["win_rate"] == "1.0"
+    assert rows[0]["event_types"] == '{"cpi":1,"fed_decision":1}'
+    assert rows[0]["unsettled_candidate_ids"] == '["perf-2"]'
+
+
 def test_append_rejects_weak_edge(tmp_path):
     ledger = tmp_path / "ledger.jsonl"
     draft = load_example()
@@ -828,6 +870,41 @@ def test_cli_settle_verify_and_summary(tmp_path, capsys):
     assert '"settled_count": 1' in performance_output
     assert '"unsettled_count": 0' in performance_output
     assert '"win_rate": 1.0' in performance_output
+
+    performance_json = tmp_path / "performance.json"
+    assert journal_cli.main(
+        [
+            "performance",
+            "--journal-ledger",
+            str(journal),
+            "--settlement-ledger",
+            str(settlements),
+            "--output",
+            str(performance_json),
+            "--format",
+            "json",
+        ]
+    ) == 0
+    assert json.loads(performance_json.read_text(encoding="utf-8"))["settled_count"] == 1
+
+    performance_csv = tmp_path / "performance.csv"
+    assert journal_cli.main(
+        [
+            "performance",
+            "--journal-ledger",
+            str(journal),
+            "--settlement-ledger",
+            str(settlements),
+            "--output",
+            str(performance_csv),
+            "--format",
+            "csv",
+        ]
+    ) == 0
+    with performance_csv.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["settled_count"] == "1"
+    assert rows[0]["outcomes"] == '{"won":1}'
 
 
 def test_cli_settle_reports_clean_error_on_bad_timestamps(tmp_path, capsys):

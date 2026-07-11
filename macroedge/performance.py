@@ -8,13 +8,40 @@ a trade.
 
 from __future__ import annotations
 
+import csv
 import json
 import os
+import tempfile
 from collections import Counter
 from typing import Any
 
+from macroedge.journal import canonical_json
 from macroedge.ledger import verify_ledger as verify_candidate_ledger
 from macroedge.settlement_ledger import verify_ledger as verify_settlement_ledger
+
+PERFORMANCE_CSV_FIELDS = [
+    "ok",
+    "candidate_count",
+    "settlement_count",
+    "settled_count",
+    "unsettled_count",
+    "won_count",
+    "lost_count",
+    "void_count",
+    "win_rate",
+    "average_brier_score",
+    "planned_risk_usd",
+    "settled_planned_risk_usd",
+    "unsettled_planned_risk_usd",
+    "average_candidate_edge_percentage_points",
+    "average_settled_edge_percentage_points",
+    "event_types",
+    "sides",
+    "outcomes",
+    "actual_results",
+    "unsettled_candidate_ids",
+    "errors",
+]
 
 
 def summarize_performance(journal_ledger_path: str, settlement_ledger_path: str) -> dict[str, Any]:
@@ -119,6 +146,44 @@ def summarize_performance(journal_ledger_path: str, settlement_ledger_path: str)
     return summary
 
 
+def export_performance_summary(summary: dict[str, Any], output_path: str, *, file_format: str) -> str:
+    """Write a performance summary as stable JSON or one-row CSV.
+
+    Returns the absolute output path. Invalid summaries can still be exported;
+    the ``ok`` and ``errors`` fields make the artifact self-describing.
+    """
+    file_format = file_format.lower().strip()
+    if file_format not in {"json", "csv"}:
+        raise ValueError("file_format must be json or csv")
+
+    absolute = os.path.abspath(output_path)
+    output_dir = os.path.dirname(absolute) or "."
+    os.makedirs(output_dir, exist_ok=True)
+    temp_path = None
+    try:
+        if file_format == "json":
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", newline="\n", dir=output_dir, delete=False
+            ) as handle:
+                json.dump(summary, handle, ensure_ascii=False, indent=2, sort_keys=True)
+                handle.write("\n")
+                temp_path = handle.name
+        else:
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", newline="", dir=output_dir, delete=False
+            ) as handle:
+                writer = csv.DictWriter(handle, fieldnames=PERFORMANCE_CSV_FIELDS)
+                writer.writeheader()
+                writer.writerow(_csv_row(summary))
+                temp_path = handle.name
+        os.replace(temp_path, absolute)
+    except OSError:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
+    return absolute
+
+
 def _load_jsonl(path: str) -> list[dict[str, Any]]:
     absolute = os.path.abspath(path)
     if not os.path.exists(absolute):
@@ -129,6 +194,20 @@ def _load_jsonl(path: str) -> list[dict[str, Any]]:
 
 def _average(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 4) if values else None
+
+
+def _csv_row(summary: dict[str, Any]) -> dict[str, Any]:
+    return {field: _csv_cell(summary.get(field)) for field in PERFORMANCE_CSV_FIELDS}
+
+
+def _csv_cell(value: Any) -> Any:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, dict | list):
+        return canonical_json(value)
+    return value
 
 
 def _empty_summary(*, candidate_count: int, settlement_count: int) -> dict[str, Any]:

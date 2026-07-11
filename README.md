@@ -190,6 +190,13 @@ py -3 macroedge/app/journal.py performance \
   --journal-ledger macroedge/ledger.jsonl \
   --settlement-ledger macroedge/settlements.jsonl
 
+# Export the same scorecard for dashboards/reports
+py -3 macroedge/app/journal.py performance \
+  --journal-ledger macroedge/ledger.jsonl \
+  --settlement-ledger macroedge/settlements.jsonl \
+  --output macroedge/performance-summary.csv \
+  --format csv
+
 # Print the current ledger head hash
 py -3 macroedge/app/journal.py head --ledger macroedge/ledger.jsonl
 ```
@@ -201,7 +208,9 @@ invalid JSON, `ledger_hash`/content mismatch, `previous_hash` break, duplicate
 `settle` appends a separate post-mortem record instead of rewriting the original
 candidate. `performance` verifies both ledgers first, then reports
 settled/unsettled candidates, win/loss/void counts, win rate, average Brier
-score, planned risk, edge averages, and event/side mixes.
+score, planned risk, edge averages, and event/side mixes. Add
+`--output <path> --format json|csv` to write the same scorecard as a durable
+artifact.
 
 ## Legacy Quant
 
