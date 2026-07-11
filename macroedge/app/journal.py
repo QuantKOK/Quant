@@ -35,7 +35,7 @@ from macroedge.candidate_builder import (  # type: ignore
 )
 from macroedge.journal import TradeJournalError, build_trade_candidate  # type: ignore
 from macroedge.ledger import append_candidate, summarize_ledger, verify_ledger  # type: ignore
-from macroedge.performance import summarize_performance  # type: ignore
+from macroedge.performance import export_performance_summary, summarize_performance  # type: ignore
 from macroedge.settlement_ledger import (  # type: ignore
     append_settlement,
     find_candidate_in_ledger,
@@ -250,6 +250,23 @@ def cmd_settlement_summary(args: argparse.Namespace) -> int:
 
 def cmd_performance(args: argparse.Namespace) -> int:
     result = summarize_performance(args.journal_ledger, args.settlement_ledger)
+    if args.output:
+        try:
+            output = export_performance_summary(result, args.output, file_format=args.format)
+        except (OSError, ValueError) as exc:
+            print(f"performance export failed: {exc}", file=sys.stderr)
+            return 1
+        _print_json(
+            {
+                "ok": result["ok"],
+                "output": output,
+                "format": args.format,
+                "candidate_count": result["candidate_count"],
+                "settlement_count": result["settlement_count"],
+                "errors": result["errors"],
+            }
+        )
+        return 0 if result["ok"] else 1
     _print_json(result)
     return 0 if result["ok"] else 1
 
@@ -340,6 +357,8 @@ def build_parser() -> argparse.ArgumentParser:
     performance_p = subparsers.add_parser("performance", help="Reconcile candidate and settlement ledgers")
     performance_p.add_argument("--journal-ledger", required=True, help="Candidate journal JSONL path")
     performance_p.add_argument("--settlement-ledger", required=True, help="Settlement ledger JSONL path")
+    performance_p.add_argument("--output", default=None, help="Optional export path for the performance summary")
+    performance_p.add_argument("--format", default="json", choices=["json", "csv"], help="Export format when --output is supplied")
     performance_p.set_defaults(func=cmd_performance)
 
     head_p = subparsers.add_parser("head", help="Print the current ledger head hash")

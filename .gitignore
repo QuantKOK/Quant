@@ -12,6 +12,8 @@ biotech-risk-scout/.cache/
 macroedge/*.jsonl
 macroedge/contract-observation*.json
 macroedge/trade-draft*.json
+macroedge/performance-summary*.csv
+macroedge/performance-summary*.json
 
 # Logs
 *.log
