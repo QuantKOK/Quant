@@ -10,6 +10,7 @@ Subcommands:
 * ``summary --ledger PATH``                 - summarize a verified candidate ledger
 * ``settle --candidate-id ID``              - append a settlement/post-mortem record
 * ``performance --journal-ledger J --settlement-ledger S`` - reconcile results
+* ``performance-dashboard --input PATH``    - render a static HTML dashboard
 * ``head --ledger PATH``                    - print the current ledger head hash
 
 This is a probability-research journal for macro event contracts. It is offline
@@ -33,6 +34,7 @@ from macroedge.candidate_builder import (  # type: ignore
     build_candidate_from_observation,
     build_trade_draft_from_observation,
 )
+from macroedge.dashboard import load_performance_summary, render_performance_dashboard  # type: ignore
 from macroedge.journal import TradeJournalError, build_trade_candidate  # type: ignore
 from macroedge.ledger import append_candidate, summarize_ledger, verify_ledger  # type: ignore
 from macroedge.performance import export_performance_summary, summarize_performance  # type: ignore
@@ -271,6 +273,25 @@ def cmd_performance(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_performance_dashboard(args: argparse.Namespace) -> int:
+    try:
+        summary = load_performance_summary(args.input)
+        output = render_performance_dashboard(summary, args.output)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"performance-dashboard failed: {exc}", file=sys.stderr)
+        return 1
+    _print_json(
+        {
+            "ok": True,
+            "input": os.path.abspath(args.input),
+            "output": output,
+            "candidate_count": summary.get("candidate_count"),
+            "settlement_count": summary.get("settlement_count"),
+        }
+    )
+    return 0
+
+
 def cmd_head(args: argparse.Namespace) -> int:
     result = verify_ledger(args.ledger)
     print(result["head_hash"])
@@ -360,6 +381,11 @@ def build_parser() -> argparse.ArgumentParser:
     performance_p.add_argument("--output", default=None, help="Optional export path for the performance summary")
     performance_p.add_argument("--format", default="json", choices=["json", "csv"], help="Export format when --output is supplied")
     performance_p.set_defaults(func=cmd_performance)
+
+    performance_dashboard_p = subparsers.add_parser("performance-dashboard", help="Render a static HTML performance dashboard")
+    performance_dashboard_p.add_argument("--input", required=True, help="Performance summary export (.json or .csv)")
+    performance_dashboard_p.add_argument("--output", required=True, help="Output HTML dashboard path")
+    performance_dashboard_p.set_defaults(func=cmd_performance_dashboard)
 
     head_p = subparsers.add_parser("head", help="Print the current ledger head hash")
     head_p.add_argument("--ledger", required=True, help="Append-only ledger JSONL path")
