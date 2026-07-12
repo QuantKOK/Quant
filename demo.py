@@ -67,7 +67,7 @@ def _step(number: int, title: str, cli, argv: list[str]) -> None:
 
 def _display_command(cli, argv: list[str]) -> str:
     module = "contracts" if cli is contracts_cli else "journal"
-    return " ".join([f"py -3 -m macroedge.app.{module}", *argv])
+    return " ".join(["py -3 -m macroedge", module, *argv])
 
 
 def main() -> int:
