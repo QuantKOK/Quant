@@ -27,6 +27,8 @@ see the whole thing work end to end, run the offline demo:
 
 ```
 py -3 demo.py
+# equivalent single-entry dispatcher:
+py -3 -m macroedge demo
 ```
 
 It drives the real CLIs on the bundled example fixtures through the full
@@ -71,19 +73,19 @@ used as event or settlement time, settlement timing prefers `expiration_time`
 then `expected_expiration_time` then `latest_expiration_time`, and endpoint
 prices (`0.00` / `1.00`) are treated as absent quotes rather than clamped.
 
-Use `macroedge/app/kalshi.py` when the input is a raw offline Kalshi-style market
+Use `py -3 -m macroedge kalshi ...` when the input is a raw offline Kalshi-style market
 fixture and you want the adapter to build the neutral MacroEdge observation:
 
 ```bash
 # Validate a raw Kalshi fixture as a MacroEdge contract observation
-py -3 macroedge/app/kalshi.py validate \
+py -3 -m macroedge kalshi validate \
   --input macroedge/examples/kalshi-market-cpi.example.json \
   --event-type cpi \
   --observed-at 2026-07-14T20:00:00-05:00 \
   --observation-id kalshi-cpi-example
 
 # Emit the canonical observation JSON for audit/reference
-py -3 macroedge/app/kalshi.py emit \
+py -3 -m macroedge kalshi emit \
   --input macroedge/examples/kalshi-market-cpi.example.json \
   --output macroedge/contract-observation-kalshi.example.json \
   --event-type cpi \
@@ -91,7 +93,7 @@ py -3 macroedge/app/kalshi.py emit \
   --observation-id kalshi-cpi-example
 
 # Append the adapted observation to the local market tape
-py -3 macroedge/app/kalshi.py append \
+py -3 -m macroedge kalshi append \
   --input macroedge/examples/kalshi-market-cpi.example.json \
   --ledger macroedge/contract-observations.jsonl \
   --event-type cpi \
@@ -99,7 +101,7 @@ py -3 macroedge/app/kalshi.py append \
   --observation-id kalshi-cpi-example
 
 # Append a whole offline fixture directory to the local market tape
-py -3 macroedge/app/kalshi.py batch-append \
+py -3 -m macroedge kalshi batch-append \
   --input-dir macroedge/examples \
   --glob "kalshi-market-*.example.json" \
   --ledger macroedge/contract-observations.jsonl \
@@ -112,20 +114,20 @@ credentials, and no order execution.
 
 ```bash
 # Validate a contract draft and print its contract_hash
-py -3 macroedge/app/contracts.py validate \
+py -3 -m macroedge contracts validate \
   --input macroedge/examples/contract-draft.example.json \
   --observation-id example-contract-observation \
   --observed-at 2026-07-14T20:00:00-05:00
 
 # Write the canonical observation JSON for audit/reference
-py -3 macroedge/app/contracts.py emit \
+py -3 -m macroedge contracts emit \
   --input macroedge/examples/contract-draft.example.json \
   --output macroedge/contract-observation.example.json \
   --observation-id example-contract-observation \
   --observed-at 2026-07-14T20:00:00-05:00
 
 # Re-verify an emitted observation record later
-py -3 macroedge/app/contracts.py verify \
+py -3 -m macroedge contracts verify \
   --input macroedge/contract-observation.example.json
 ```
 
@@ -134,21 +136,21 @@ Pass both `--observation-id` and `--observed-at` when you need a reproducible
 
 ```bash
 # Append observations to a tamper-evident local market tape
-py -3 macroedge/app/contracts.py append \
+py -3 -m macroedge contracts append \
   --input macroedge/examples/contract-draft.example.json \
   --ledger macroedge/contract-observations.jsonl \
   --observation-id example-contract-observation \
   --observed-at 2026-07-14T20:00:00-05:00
 
 # Verify the observation ledger and print its current head
-py -3 macroedge/app/contracts.py verify-ledger --ledger macroedge/contract-observations.jsonl
-py -3 macroedge/app/contracts.py summary --ledger macroedge/contract-observations.jsonl
-py -3 macroedge/app/contracts.py head --ledger macroedge/contract-observations.jsonl
+py -3 -m macroedge contracts verify-ledger --ledger macroedge/contract-observations.jsonl
+py -3 -m macroedge contracts summary --ledger macroedge/contract-observations.jsonl
+py -3 -m macroedge contracts head --ledger macroedge/contract-observations.jsonl
 ```
 
 ### Trade journal (append-only, offline)
 
-`macroedge/app/journal.py` is a CLI for a tamper-evident, hash-chained journal of
+`py -3 -m macroedge journal ...` is a CLI for a tamper-evident, hash-chained journal of
 macro event-contract trade *candidates*. It is a probability-research journal,
 not a betting bot: it never contacts a market/API and never places trades. Each
 candidate is validated by `macroedge.journal.build_trade_candidate` (edge, risk,
@@ -167,7 +169,7 @@ fees, spread, and slippage; the operating plan still requires a real-world
 
 ```bash
 # Seed a candidate draft from a verified contract observation
-py -3 macroedge/app/journal.py draft-from-observation \
+py -3 -m macroedge journal draft-from-observation \
   --input macroedge/contract-observation-kalshi.example.json \
   --output macroedge/trade-draft-from-observation.example.json \
   --side YES \
@@ -180,24 +182,24 @@ py -3 macroedge/app/journal.py draft-from-observation \
   --candidate-id example-candidate
 
 # Validate a draft (see macroedge/examples/trade-draft.example.json)
-py -3 macroedge/app/journal.py validate \
+py -3 -m macroedge journal validate \
   --input macroedge/examples/trade-draft.example.json \
   --created-at 2026-07-15T02:00:00+00:00
 
 # Append a validated candidate to an append-only ledger
-py -3 macroedge/app/journal.py append \
+py -3 -m macroedge journal append \
   --input macroedge/examples/trade-draft.example.json \
   --ledger macroedge/ledger.jsonl \
   --created-at 2026-07-15T02:00:00+00:00
 
 # Verify the whole chain (hashes, previous_hash links, ids, ordering, edge/risk)
-py -3 macroedge/app/journal.py verify --ledger macroedge/ledger.jsonl
+py -3 -m macroedge journal verify --ledger macroedge/ledger.jsonl
 
 # Summarize candidate count, risk, edge, event mix, side mix, and post-mortem status
-py -3 macroedge/app/journal.py summary --ledger macroedge/ledger.jsonl
+py -3 -m macroedge journal summary --ledger macroedge/ledger.jsonl
 
 # Append a settlement/post-mortem record without rewriting the candidate journal
-py -3 macroedge/app/journal.py settle \
+py -3 -m macroedge journal settle \
   --journal-ledger macroedge/ledger.jsonl \
   --settlement-ledger macroedge/settlements.jsonl \
   --candidate-id example-candidate \
@@ -206,28 +208,28 @@ py -3 macroedge/app/journal.py settle \
   --notes "Resolved from the cited official source."
 
 # Verify and summarize the settlement ledger
-py -3 macroedge/app/journal.py verify-settlements --ledger macroedge/settlements.jsonl
-py -3 macroedge/app/journal.py settlement-summary --ledger macroedge/settlements.jsonl
+py -3 -m macroedge journal verify-settlements --ledger macroedge/settlements.jsonl
+py -3 -m macroedge journal settlement-summary --ledger macroedge/settlements.jsonl
 
 # Reconcile candidates vs settlements into a performance scorecard
-py -3 macroedge/app/journal.py performance \
+py -3 -m macroedge journal performance \
   --journal-ledger macroedge/ledger.jsonl \
   --settlement-ledger macroedge/settlements.jsonl
 
 # Export the same scorecard for dashboards/reports
-py -3 macroedge/app/journal.py performance \
+py -3 -m macroedge journal performance \
   --journal-ledger macroedge/ledger.jsonl \
   --settlement-ledger macroedge/settlements.jsonl \
   --output macroedge/performance-summary.csv \
   --format csv
 
 # Render a portable static dashboard from either the JSON or CSV export
-py -3 macroedge/app/journal.py performance-dashboard \
+py -3 -m macroedge journal performance-dashboard \
   --input macroedge/performance-summary.csv \
   --output macroedge/performance-dashboard.html
 
 # Print the current ledger head hash
-py -3 macroedge/app/journal.py head --ledger macroedge/ledger.jsonl
+py -3 -m macroedge journal head --ledger macroedge/ledger.jsonl
 ```
 
 `validate`/`append` accept optional `--created-at <ISO-8601>` and

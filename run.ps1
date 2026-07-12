@@ -26,9 +26,9 @@ if ($RunExample) {
     # performance -> dashboard). Writes only to a throwaway temp directory.
     $env:PYTHONIOENCODING = "utf-8"
     if (Test-Path .\.venv\Scripts\python.exe) {
-        .\.venv\Scripts\python.exe demo.py
+        .\.venv\Scripts\python.exe -m macroedge demo
     } else {
-        py -3 demo.py
+        py -3 -m macroedge demo
     }
 }
 
