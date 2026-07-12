@@ -246,6 +246,41 @@ that compare fair probabilities against actual non-void outcomes. Add `--output
 HTML dashboard for review; it has no network/runtime dependency and is still
 research-only.
 
+### Decision packets (pre-trade research notes)
+
+`py -3 -m macroedge decision-packet ...` captures the disciplined human research
+note *before* a possible trade becomes a logged candidate. A decision packet is a
+research artifact — **not a trade, an order, or investment advice**. It links a
+verified contract observation to the analyst's thesis, fair probability, cited
+sources, disconfirming evidence, intent (`no_trade`/`paper`/`tiny_live`), and an
+explicit `decision` (`observe_only`/`candidate_ok`/`reject`). It computes the
+market-implied probability for the selected side, the gross edge, whether the
+edge clears a configured threshold, and a *workflow* next-action label (never a
+buy/sell recommendation). Packets are deterministic given `--packet-id` and
+`--created-at` and carry a tamper-evident `packet_hash`.
+
+```bash
+# Build a packet from a verified observation and print its summary
+py -3 -m macroedge decision-packet validate \
+  --input macroedge/contract-observation.example.json \
+  --side YES --fair-probability 0.53 \
+  --thesis-summary "Manual CPI thesis from cited sources." \
+  --data-source https://www.bls.gov/cpi/ \
+  --intent paper --decision candidate_ok \
+  --risk-notes "Tiny size; single-event exposure under cap." \
+  --disconfirming-evidence "Shelter disinflation could pull the print lower." \
+  --packet-id cpi-2026jun --created-at 2026-07-15T02:00:00+00:00
+
+# Emit the canonical packet JSON, then re-verify it later
+py -3 -m macroedge decision-packet emit  --output macroedge/decision-packet.example.json ...same flags...
+py -3 -m macroedge decision-packet verify --input  macroedge/decision-packet.example.json
+```
+
+Only a `candidate_ok` packet should seed a trade candidate;
+`macroedge.decision_packet.candidate_seed_from_packet` carries the analyst inputs
+forward into `candidate_builder` without building a candidate or placing a trade.
+See `docs/decision_packet.md` for the full workflow.
+
 ## Legacy Quant
 
 Files:

@@ -21,6 +21,7 @@ from collections.abc import Sequence
 
 COMMANDS = {
     "contracts": ("macroedge.app.contracts", "Contract observation tools"),
+    "decision-packet": ("macroedge.app.decision_packet", "Pre-trade decision packet research notes"),
     "journal": ("macroedge.app.journal", "Trade-candidate journal, settlements, performance, and dashboard tools"),
     "kalshi": ("macroedge.app.kalshi", "Offline Kalshi fixture adapter tools"),
     "demo": ("demo", "Run the end-to-end offline MacroEdge demo"),
